@@ -1,0 +1,1678 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AlgoFlow</title>
+<style>
+:root {
+  --bg: #0f1117;
+  --bg2: #161820;
+  --bg3: #1e2030;
+  --border: rgba(255,255,255,0.08);
+  --border2: rgba(255,255,255,0.15);
+  --text: #cdd6f4;
+  --text2: #a6adc8;
+  --text3: #6c7086;
+  --raw: #ffffff;
+  --type: #7b8cde;
+  --util: #e0af68;
+  --sort: #4caf7d;
+  --search: #ff9e64;
+  --tree: #73daca;
+  --string: #bb9af7;
+  --hw: #f7768e;
+  --output: #cdd6f4;
+  --danger: #f38ba8;
+  --warn: #f9e2af;
+  --ok: #a6e3a1;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: var(--bg); color: var(--text); font-family: 'JetBrains Mono', 'Fira Code', monospace; font-size: 13px; overflow: hidden; height: 100vh; display: flex; flex-direction: column; }
+
+/* TOOLBAR */
+#toolbar {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 12px;
+  background: var(--bg2);
+  border-bottom: 1px solid var(--border);
+  z-index: 100; flex-shrink: 0;
+}
+#toolbar .logo { font-size: 15px; font-weight: 700; color: var(--text); letter-spacing: 2px; margin-right: 12px; }
+#toolbar .logo span { color: var(--type); }
+.tb-btn {
+  padding: 5px 12px; border-radius: 6px;
+  border: 1px solid var(--border2);
+  background: transparent; color: var(--text);
+  cursor: pointer; font-family: inherit; font-size: 12px;
+  transition: all 0.15s;
+}
+.tb-btn:hover { background: var(--bg3); border-color: var(--type); }
+.tb-btn.run { background: var(--sort); color: #0f1117; border-color: var(--sort); }
+.tb-btn.stop { background: var(--danger); color: #0f1117; border-color: var(--danger); }
+.tb-btn.reset { border-color: var(--warn); color: var(--warn); }
+.throughput { margin-left: auto; font-size: 12px; color: var(--text2); }
+.throughput span { color: var(--ok); font-weight: 700; }
+
+/* MAIN LAYOUT */
+#main { display: flex; flex: 1; overflow: hidden; }
+
+/* SIDEBAR */
+#sidebar {
+  width: 200px; flex-shrink: 0;
+  background: var(--bg2);
+  border-right: 1px solid var(--border);
+  overflow-y: auto; padding: 8px;
+}
+.sidebar-section { margin-bottom: 12px; }
+.sidebar-title {
+  font-size: 10px; font-weight: 700; letter-spacing: 1.5px;
+  color: var(--text3); padding: 4px 4px; margin-bottom: 4px;
+  text-transform: uppercase;
+}
+.node-item {
+  padding: 7px 10px; border-radius: 6px;
+  border: 1px solid var(--border);
+  margin-bottom: 3px; cursor: grab;
+  font-size: 11px; color: var(--text2);
+  display: flex; align-items: center; gap: 6px;
+  transition: all 0.15s; user-select: none;
+}
+.node-item:hover { background: var(--bg3); border-color: var(--border2); color: var(--text); }
+.node-item:active { cursor: grabbing; }
+.node-item .dot {
+  width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+}
+
+/* CANVAS */
+#canvas-wrap {
+  flex: 1; position: relative; overflow: hidden;
+  background: var(--bg);
+  background-image: radial-gradient(circle, rgba(255,255,255,0.04) 1px, transparent 1px);
+  background-size: 32px 32px;
+}
+#canvas { width: 100%; height: 100%; position: relative; }
+svg#connections {
+  position: absolute; top: 0; left: 0;
+  width: 100%; height: 100%;
+  pointer-events: none; z-index: 1;
+}
+svg#connections .connection-line { pointer-events: stroke; }
+
+/* NODES */
+.node {
+  position: absolute; z-index: 10;
+  border-radius: 10px;
+  border: 1px solid var(--border2);
+  background: var(--bg2);
+  user-select: none; cursor: move;
+  min-width: 140px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+  transition: box-shadow 0.2s;
+}
+.node:hover { box-shadow: 0 6px 30px rgba(0,0,0,0.6); }
+.node.selected { border-color: var(--type); box-shadow: 0 0 0 2px rgba(123,140,222,0.3); }
+.node.running { animation: nodePulse 1.5s ease-in-out infinite; }
+.node.done { border-color: var(--ok); }
+.node.error { border-color: var(--danger); animation: nodeShake 0.3s; }
+@keyframes nodePulse { 0%,100% { box-shadow: 0 4px 20px rgba(0,0,0,0.4); } 50% { box-shadow: 0 0 20px rgba(255,255,255,0.1); } }
+@keyframes nodeShake { 0%,100% { transform: none; } 25% { transform: translateX(-3px); } 75% { transform: translateX(3px); } }
+
+.node-bar { width: 4px; border-radius: 10px 0 0 10px; position: absolute; left: 0; top: 0; bottom: 0; }
+.node-header {
+  padding: 8px 10px 6px 14px;
+  font-size: 11px; font-weight: 700; color: var(--text);
+  display: flex; align-items: center; justify-content: space-between;
+}
+.node-type-tag {
+  font-size: 9px; color: var(--text3);
+  border: 1px solid var(--border);
+  padding: 1px 5px; border-radius: 3px;
+}
+.node-body { padding: 4px 10px 8px 14px; font-size: 10px; color: var(--text2); }
+.node-stat { margin-bottom: 2px; }
+
+/* PORTS */
+.port {
+  width: 12px; height: 12px; border-radius: 50%;
+  border: 2px solid var(--border2);
+  background: var(--bg3);
+  position: absolute; cursor: crosshair;
+  transition: all 0.15s; z-index: 20;
+}
+.port:hover { transform: scale(1.5); border-color: var(--type); background: var(--type); }
+.port.out { right: -6px; top: 50%; transform: translateY(-50%); }
+.port.out:hover { transform: translateY(-50%) scale(1.5); }
+.port.in { left: -6px; top: 50%; transform: translateY(-50%); }
+.port.in:hover { transform: translateY(-50%) scale(1.5); }
+.port.hw-in { top: -6px; left: 50%; transform: translateX(-50%); }
+.port.hw-in:hover { transform: translateX(-50%) scale(1.5); }
+
+/* CONNECTIONS */
+.conn-path { fill: none; stroke-width: 2; transition: stroke 0.3s; }
+.conn-path.valid { stroke: rgba(255,255,255,0.3); }
+.conn-path.error-conn { stroke: var(--danger); stroke-dasharray: 6 3; }
+.conn-path.running { stroke: rgba(100,200,255,0.6); }
+.conn-path.done { stroke: var(--ok); }
+.conn-path.hw { stroke: rgba(247,118,142,0.5); stroke-dasharray: 5 3; }
+
+/* PARTICLE CANVAS */
+#particle-canvas {
+  position: absolute; top: 0; left: 0;
+  width: 100%; height: 100%;
+  pointer-events: none; z-index: 5;
+}
+
+/* RIGHT PANEL */
+#right-panel {
+  width: 220px; flex-shrink: 0;
+  background: var(--bg2);
+  border-left: 1px solid var(--border);
+  overflow-y: auto; display: flex; flex-direction: column;
+}
+.panel-section {
+  border-bottom: 1px solid var(--border);
+  padding: 10px;
+}
+.panel-title { font-size: 10px; font-weight: 700; letter-spacing: 1.5px; color: var(--text3); text-transform: uppercase; margin-bottom: 8px; }
+.challenge-card {
+  background: var(--bg3); border: 1px solid var(--border);
+  border-radius: 6px; padding: 8px; margin-bottom: 6px; font-size: 11px;
+}
+.challenge-card .ch-name { color: var(--type); font-weight: 700; margin-bottom: 3px; }
+.challenge-card .ch-desc { color: var(--text2); margin-bottom: 4px; }
+.challenge-card .ch-hint { color: var(--text3); font-size: 10px; font-style: italic; }
+.challenge-card.done { border-color: var(--ok); }
+.challenge-card.done .ch-name { color: var(--ok); }
+
+.achievement { 
+  display: flex; align-items: center; gap: 6px;
+  padding: 5px; border-radius: 4px; margin-bottom: 3px;
+  font-size: 10px; color: var(--text3);
+}
+.achievement.unlocked { color: var(--warn); }
+.achievement .ach-icon { font-size: 14px; }
+
+/* VIZ POPUP */
+#viz-popup {
+  position: fixed; top: 60px; right: 240px;
+  width: 500px; background: var(--bg2);
+  border: 1px solid var(--border2);
+  border-radius: 10px; z-index: 1000;
+  display: none; box-shadow: 0 10px 40px rgba(0,0,0,0.6);
+}
+#viz-popup.visible { display: block; }
+.viz-header {
+  padding: 10px 14px; border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: space-between;
+}
+.viz-title { font-weight: 700; color: var(--text); }
+.viz-close { cursor: pointer; color: var(--text3); font-size: 16px; }
+.viz-close:hover { color: var(--text); }
+#viz-canvas { width: 100%; height: 280px; display: block; border-radius: 0 0 10px 10px; }
+.viz-stats { padding: 8px 14px; display: flex; gap: 16px; font-size: 11px; color: var(--text2); }
+.viz-stat { display: flex; flex-direction: column; gap: 2px; }
+.viz-stat .vl { font-size: 16px; font-weight: 700; color: var(--text); }
+
+/* STATUS BAR */
+#statusbar {
+  padding: 4px 12px; background: var(--bg2);
+  border-top: 1px solid var(--border);
+  display: flex; align-items: center; gap: 16px;
+  font-size: 10px; color: var(--text3); flex-shrink: 0;
+}
+.status-item span { color: var(--text2); }
+.status-msg { margin-left: auto; }
+.status-msg.error { color: var(--danger); }
+.status-msg.ok { color: var(--ok); }
+.status-msg.warn { color: var(--warn); }
+
+/* DRAG GHOST */
+#drag-ghost {
+  position: fixed; pointer-events: none;
+  opacity: 0.7; z-index: 9999;
+  background: var(--bg3); border: 1px solid var(--type);
+  border-radius: 8px; padding: 6px 12px; font-size: 11px;
+  display: none; color: var(--type);
+}
+
+/* UPGRADE PANEL */
+.upgrade-btn {
+  display: block; width: 100%;
+  padding: 5px 8px; border-radius: 5px;
+  border: 1px solid var(--border);
+  background: transparent; color: var(--text2);
+  cursor: pointer; font-family: inherit; font-size: 10px;
+  text-align: left; margin-bottom: 4px; transition: all 0.15s;
+}
+.upgrade-btn:hover { border-color: var(--type); color: var(--type); background: rgba(123,140,222,0.05); }
+.upgrade-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.upgrade-btn .cost { float: right; color: var(--text3); }
+
+/* Tooltip */
+.node-context {
+  position: fixed; z-index: 2000;
+  background: var(--bg3); border: 1px solid var(--border2);
+  border-radius: 8px; padding: 8px; font-size: 11px;
+  color: var(--text); min-width: 160px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+  display: none;
+}
+.ctx-item { padding: 5px 8px; cursor: pointer; border-radius: 4px; }
+.ctx-item:hover { background: var(--bg2); }
+.ctx-item.danger { color: var(--danger); }
+</style>
+</head>
+<body>
+
+<div id="toolbar">
+  <div class="logo">Algo<span>Flow</span></div>
+  <button class="tb-btn run" onclick="startSim()">▶ 실행</button>
+  <button class="tb-btn stop" onclick="stopSim()">■ 정지</button>
+  <button class="tb-btn reset" onclick="resetSim()">↺ 리셋</button>
+  <div class="throughput">처리량: <span id="throughput-display">0</span> TB</div>
+</div>
+
+<div id="main">
+  <!-- SIDEBAR -->
+  <div id="sidebar">
+    <div class="sidebar-section">
+      <div class="sidebar-title">타입 변환</div>
+      <div class="node-item" draggable="true" data-type="type" data-subtype="IntegerArray">
+        <div class="dot" style="background:var(--type)"></div>Integer Array
+      </div>
+      <div class="node-item" draggable="true" data-type="type" data-subtype="Graph">
+        <div class="dot" style="background:#bb9af7"></div>Graph
+      </div>
+      <div class="node-item" draggable="true" data-type="type" data-subtype="Tree">
+        <div class="dot" style="background:var(--tree)"></div>Tree
+      </div>
+      <div class="node-item" draggable="true" data-type="type" data-subtype="String">
+        <div class="dot" style="background:var(--string)"></div>String
+      </div>
+    </div>
+    <div class="sidebar-section">
+      <div class="sidebar-title">유틸리티</div>
+      <div class="node-item" draggable="true" data-type="util" data-subtype="Split">
+        <div class="dot" style="background:var(--util)"></div>Split
+      </div>
+      <div class="node-item" draggable="true" data-type="util" data-subtype="Duplicate">
+        <div class="dot" style="background:var(--util)"></div>Duplicate
+      </div>
+      <div class="node-item" draggable="true" data-type="util" data-subtype="Merge">
+        <div class="dot" style="background:var(--util)"></div>Merge
+      </div>
+      <div class="node-item" draggable="true" data-type="util" data-subtype="Filter">
+        <div class="dot" style="background:var(--util)"></div>Filter
+      </div>
+      <div class="node-item" draggable="true" data-type="util" data-subtype="Shuffle">
+        <div class="dot" style="background:var(--util)"></div>Shuffle
+      </div>
+      <div class="node-item" draggable="true" data-type="util" data-subtype="Delay">
+        <div class="dot" style="background:var(--util)"></div>Delay
+      </div>
+    </div>
+    <div class="sidebar-section">
+      <div class="sidebar-title">정렬 알고리즘</div>
+      <div class="node-item" draggable="true" data-type="algo" data-subtype="BubbleSort">
+        <div class="dot" style="background:var(--sort)"></div>Bubble Sort
+      </div>
+      <div class="node-item" draggable="true" data-type="algo" data-subtype="SelectionSort">
+        <div class="dot" style="background:var(--sort)"></div>Selection Sort
+      </div>
+      <div class="node-item" draggable="true" data-type="algo" data-subtype="InsertionSort">
+        <div class="dot" style="background:var(--sort)"></div>Insertion Sort
+      </div>
+      <div class="node-item" draggable="true" data-type="algo" data-subtype="MergeSort">
+        <div class="dot" style="background:var(--sort)"></div>Merge Sort
+      </div>
+      <div class="node-item" draggable="true" data-type="algo" data-subtype="QuickSort">
+        <div class="dot" style="background:var(--sort)"></div>Quick Sort
+      </div>
+      <div class="node-item" draggable="true" data-type="algo" data-subtype="HeapSort">
+        <div class="dot" style="background:var(--sort)"></div>Heap Sort
+      </div>
+    </div>
+    <div class="sidebar-section">
+      <div class="sidebar-title">탐색 알고리즘</div>
+      <div class="node-item" draggable="true" data-type="algo" data-subtype="BFS">
+        <div class="dot" style="background:var(--search)"></div>BFS
+      </div>
+      <div class="node-item" draggable="true" data-type="algo" data-subtype="DFS">
+        <div class="dot" style="background:var(--search)"></div>DFS
+      </div>
+      <div class="node-item" draggable="true" data-type="algo" data-subtype="Dijkstra">
+        <div class="dot" style="background:var(--search)"></div>Dijkstra
+      </div>
+    </div>
+    <div class="sidebar-section">
+      <div class="sidebar-title">하드웨어</div>
+      <div class="node-item" draggable="true" data-type="hw" data-subtype="CPU">
+        <div class="dot" style="background:var(--hw)"></div>CPU
+      </div>
+      <div class="node-item" draggable="true" data-type="hw" data-subtype="GPU">
+        <div class="dot" style="background:var(--hw)"></div>GPU
+      </div>
+      <div class="node-item" draggable="true" data-type="hw" data-subtype="RAM">
+        <div class="dot" style="background:var(--hw)"></div>RAM
+      </div>
+    </div>
+    <div class="sidebar-section">
+      <div class="sidebar-title">출력</div>
+      <div class="node-item" draggable="true" data-type="out" data-subtype="Visualizer">
+        <div class="dot" style="background:var(--output)"></div>Visualizer
+      </div>
+      <div class="node-item" draggable="true" data-type="out" data-subtype="Stats">
+        <div class="dot" style="background:var(--output)"></div>Stats Panel
+      </div>
+      <div class="node-item" draggable="true" data-type="out" data-subtype="Comparator">
+        <div class="dot" style="background:var(--output)"></div>Comparator
+      </div>
+    </div>
+  </div>
+
+  <!-- CANVAS -->
+  <div id="canvas-wrap">
+    <div id="canvas">
+      <svg id="connections"></svg>
+      <canvas id="particle-canvas"></canvas>
+    </div>
+  </div>
+
+  <!-- RIGHT PANEL -->
+  <div id="right-panel">
+    <div class="panel-section">
+      <div class="panel-title">챌린지</div>
+      <div id="challenge-list"></div>
+    </div>
+    <div class="panel-section">
+      <div class="panel-title">업적</div>
+      <div id="achievement-list"></div>
+    </div>
+    <div class="panel-section" id="upgrade-section" style="display:none">
+      <div class="panel-title">업그레이드</div>
+      <div id="upgrade-list"></div>
+    </div>
+    <div class="panel-section">
+      <div class="panel-title">선택된 노드</div>
+      <div id="node-info" style="font-size:11px;color:var(--text3)">노드를 클릭하세요</div>
+    </div>
+  </div>
+</div>
+
+<!-- STATUS BAR -->
+<div id="statusbar">
+  <div>노드: <span id="node-count">1</span></div>
+  <div>연결: <span id="conn-count">0</span></div>
+  <div>처리량/s: <span id="throughput-rate">0</span> TB</div>
+  <div class="status-msg" id="status-msg">RAW INPUT에서 시작하세요</div>
+</div>
+
+<!-- VIZ POPUP -->
+<div id="viz-popup">
+  <div class="viz-header">
+    <span class="viz-title" id="viz-title">Visualizer</span>
+    <span class="viz-close" onclick="closeViz()">✕</span>
+  </div>
+  <div class="viz-stats" id="viz-stats"></div>
+  <canvas id="viz-canvas"></canvas>
+</div>
+
+<!-- DRAG GHOST -->
+<div id="drag-ghost">노드</div>
+
+<!-- CONTEXT MENU -->
+<div class="node-context" id="ctx-menu">
+  <div class="ctx-item" id="ctx-viz">👁 시각화 열기</div>
+  <div class="ctx-item danger" id="ctx-del">🗑 삭제</div>
+</div>
+
+<script>
+// ==================== STATE ====================
+const state = {
+  nodes: new Map(),
+  connections: [],
+  selected: null,
+  draggingNode: null,
+  dragOffset: { x: 0, y: 0 },
+  connecting: false,
+  connectFrom: null,
+  tempLine: null,
+  running: false,
+  throughput: 0,
+  throughputRate: 0,
+  particles: [],
+  vizNode: null,
+  vizAnimation: null,
+  nextId: 1,
+  canvasOffset: { x: 0, y: 0 },
+};
+
+// Algorithm configs
+const ALGO_CONFIG = {
+  BubbleSort: { complexity: 'O(n²)', color: '#4caf7d', accepts: ['int[]'], coeff: 1.0, cpuBoost: true, gpuBoost: false, ramBoost: false },
+  SelectionSort: { complexity: 'O(n²)', color: '#4caf7d', accepts: ['int[]'], coeff: 1.0, cpuBoost: true, gpuBoost: false, ramBoost: false },
+  InsertionSort: { complexity: 'O(n²)', color: '#4caf7d', accepts: ['int[]'], coeff: 0.9, cpuBoost: true, gpuBoost: false, ramBoost: false },
+  MergeSort: { complexity: 'O(n log n)', color: '#4caf7d', accepts: ['int[]'], coeff: 1.5, cpuBoost: false, gpuBoost: true, ramBoost: true },
+  QuickSort: { complexity: 'O(n log n) avg', color: '#4caf7d', accepts: ['int[]'], coeff: 1.3, cpuBoost: true, gpuBoost: false, ramBoost: false },
+  HeapSort: { complexity: 'O(n log n)', color: '#4caf7d', accepts: ['int[]'], coeff: 1.2, cpuBoost: false, gpuBoost: false, ramBoost: false },
+  BFS: { complexity: 'O(V+E)', color: '#ff9e64', accepts: ['graph', 'maze'], coeff: 1.8, cpuBoost: false, gpuBoost: true, ramBoost: true },
+  DFS: { complexity: 'O(V+E)', color: '#ff9e64', accepts: ['graph'], coeff: 1.5, cpuBoost: false, gpuBoost: false, ramBoost: false },
+  Dijkstra: { complexity: 'O((V+E) log V)', color: '#ff9e64', accepts: ['graph'], coeff: 2.0, cpuBoost: false, gpuBoost: false, ramBoost: true },
+};
+
+const TYPE_COLORS = {
+  'RAW': '#ffffff', 'int[]': '#7b8cde', 'graph': '#bb9af7',
+  'tree': '#73daca', 'string': '#e0af68', 'maze': '#2ac3de', 'ANY': '#e0af68',
+};
+
+const CHALLENGES = [
+  { id: 'first', name: '첫 파이프라인', desc: '소스→변환→알고리즘→출력 연결', hint: '순서대로 연결해봐', done: false },
+  { id: 'race', name: '경마', desc: '같은 데이터로 2가지 정렬 동시 실행', hint: 'Duplicate 노드 써봐', done: false },
+  { id: 'worst', name: '최악의 케이스', desc: 'Quick Sort에 이미 정렬된 데이터 넣기', hint: 'Shuffle 없이 연결해봐', done: false },
+  { id: 'memory', name: '메모리의 중요성', desc: 'RAM 없이 n=2000 Merge Sort 실행', hint: 'RAM 노드 없이 연결해봐', done: false },
+  { id: 'gpuwaste', name: 'GPU의 한계', desc: 'GPU를 Bubble Sort에 연결', hint: 'GPU 활용률 확인해봐', done: false },
+];
+
+const ACHIEVEMENTS = [
+  { id: 'hello', name: 'Hello, World', desc: '첫 파이프라인 실행', icon: '🚀', unlocked: false },
+  { id: 'gpuwaste', name: '낭비왕', desc: 'GPU를 Bubble Sort에 연결', icon: '🗑', unlocked: false },
+  { id: 'memhog', name: '메모리 거지', desc: 'RAM 없이 Merge Sort n=2000', icon: '💀', unlocked: false },
+  { id: 'parallel', name: '병렬의 신', desc: '알고리즘 3개 동시 실행', icon: '⚡', unlocked: false },
+  { id: 'typebust', name: '타입 파괴자', desc: '타입 에러 5번 발생', icon: '💥', unlocked: false },
+];
+let typeErrors = 0;
+
+// ==================== NODE DEFINITIONS ====================
+const NODE_DEFS = {
+  raw: { label: 'RAW INPUT', color: '#ffffff', barColor: '#ffffff', outputType: 'RAW', multi: false },
+  type_IntegerArray: { label: 'Integer Array', color: '#7b8cde', barColor: '#7b8cde', outputType: 'int[]', inputType: 'RAW' },
+  type_Graph: { label: 'Graph', color: '#bb9af7', barColor: '#bb9af7', outputType: 'graph', inputType: 'RAW' },
+  type_Tree: { label: 'Tree', color: '#73daca', barColor: '#73daca', outputType: 'tree', inputType: 'RAW' },
+  type_String: { label: 'String', color: '#e0af68', barColor: '#e0af68', outputType: 'string', inputType: 'RAW' },
+  util_Split: { label: 'Split', color: '#e0af68', barColor: '#e0af68', outputType: 'ANY', inputType: 'ANY', multiOut: true },
+  util_Duplicate: { label: 'Duplicate', color: '#e0af68', barColor: '#e0af68', outputType: 'ANY', inputType: 'ANY', multiOut: true },
+  util_Merge: { label: 'Merge', color: '#e0af68', barColor: '#e0af68', outputType: 'ANY', inputType: 'ANY', multiIn: true },
+  util_Filter: { label: 'Filter', color: '#e0af68', barColor: '#e0af68', outputType: 'ANY', inputType: 'ANY', multiOut: true },
+  util_Shuffle: { label: 'Shuffle', color: '#e0af68', barColor: '#e0af68', outputType: 'ANY', inputType: 'ANY' },
+  util_Delay: { label: 'Delay', color: '#e0af68', barColor: '#e0af68', outputType: 'ANY', inputType: 'ANY' },
+  hw_CPU: { label: 'CPU', color: '#f7768e', barColor: '#f7768e', isHW: true },
+  hw_GPU: { label: 'GPU', color: '#f7768e', barColor: '#f7768e', isHW: true },
+  hw_RAM: { label: 'RAM', color: '#f7768e', barColor: '#f7768e', isHW: true },
+  algo_BubbleSort: { label: 'Bubble Sort', color: '#4caf7d', barColor: '#4caf7d', inputType: 'int[]', outputType: 'int[]', hasHW: true },
+  algo_SelectionSort: { label: 'Selection Sort', color: '#4caf7d', barColor: '#4caf7d', inputType: 'int[]', outputType: 'int[]', hasHW: true },
+  algo_InsertionSort: { label: 'Insertion Sort', color: '#4caf7d', barColor: '#4caf7d', inputType: 'int[]', outputType: 'int[]', hasHW: true },
+  algo_MergeSort: { label: 'Merge Sort', color: '#4caf7d', barColor: '#4caf7d', inputType: 'int[]', outputType: 'int[]', hasHW: true },
+  algo_QuickSort: { label: 'Quick Sort', color: '#4caf7d', barColor: '#4caf7d', inputType: 'int[]', outputType: 'int[]', hasHW: true },
+  algo_HeapSort: { label: 'Heap Sort', color: '#4caf7d', barColor: '#4caf7d', inputType: 'int[]', outputType: 'int[]', hasHW: true },
+  algo_BFS: { label: 'BFS', color: '#ff9e64', barColor: '#ff9e64', inputType: 'graph', outputType: 'graph', hasHW: true },
+  algo_DFS: { label: 'DFS', color: '#ff9e64', barColor: '#ff9e64', inputType: 'graph', outputType: 'graph', hasHW: true },
+  algo_Dijkstra: { label: 'Dijkstra', color: '#ff9e64', barColor: '#ff9e64', inputType: 'graph', outputType: 'graph', hasHW: true },
+  out_Visualizer: { label: 'Visualizer', color: '#cdd6f4', barColor: '#cdd6f4', inputType: 'ANY' },
+  out_Stats: { label: 'Stats Panel', color: '#cdd6f4', barColor: '#cdd6f4', inputType: 'ANY' },
+  out_Comparator: { label: 'Comparator', color: '#cdd6f4', barColor: '#cdd6f4', inputType: 'ANY', multiIn: true },
+};
+
+// ==================== INIT ====================
+function init() {
+  setupCanvasResize();
+  createRawInput();
+  renderChallenges();
+  renderAchievements();
+  setupSidebarDrag();
+  setupCanvasDrop();
+  setupConnectionDrawing();
+  startParticleLoop();
+  startThroughputLoop();
+  document.addEventListener('click', hideCtxMenu);
+  document.addEventListener('keydown', e => { if (e.key === 'Delete' && state.selected) deleteSelected(); });
+}
+
+function setupCanvasResize() {
+  const pc = document.getElementById('particle-canvas');
+  function resize() {
+    const wrap = document.getElementById('canvas-wrap');
+    pc.width = wrap.clientWidth;
+    pc.height = wrap.clientHeight;
+  }
+  resize();
+  window.addEventListener('resize', resize);
+}
+
+// ==================== RAW INPUT ====================
+function createRawInput() {
+  const wrap = document.getElementById('canvas-wrap');
+  const y = wrap.clientHeight / 2 - 60;
+  const node = createNode('raw', null, 20, y);
+  node.el.style.cursor = 'default';
+  node.el.querySelector('.node-bar').style.boxShadow = '0 0 12px rgba(255,255,255,0.3)';
+  updateNodeDisplay(node.id);
+}
+
+// ==================== NODE CREATION ====================
+function createNode(type, subtype, x, y) {
+  const id = 'n' + (state.nextId++);
+  const key = subtype ? `${type}_${subtype}` : type;
+  const def = NODE_DEFS[key] || NODE_DEFS[type];
+
+  const nodeData = {
+    id, type, subtype, key, def,
+    x, y, el: null,
+    stats: { comparisons: 0, swaps: 0, time: 0, memory: 0, throughput: 0 },
+    hw: null, // connected hardware
+    dataSize: type === 'raw' ? 100 : null,
+    transferSpeed: type === 'raw' ? 1 : null,
+    upgrades: { dataSize: 0, speed: 0, cores: 1 },
+    running: false, done: false, error: false,
+  };
+
+  const el = document.createElement('div');
+  el.className = 'node';
+  el.id = id;
+  el.style.left = x + 'px';
+  el.style.top = y + 'px';
+
+  const bar = document.createElement('div');
+  bar.className = 'node-bar';
+  bar.style.background = def?.color || '#ffffff';
+  el.appendChild(bar);
+
+  const header = document.createElement('div');
+  header.className = 'node-header';
+  header.innerHTML = `<span>${def?.label || key}</span><span class="node-type-tag">${type.toUpperCase()}</span>`;
+  el.appendChild(header);
+
+  const body = document.createElement('div');
+  body.className = 'node-body';
+  body.id = id + '-body';
+  el.appendChild(body);
+
+  // Ports
+  if (type !== 'raw' && !def?.isHW) {
+    const inPort = document.createElement('div');
+    inPort.className = 'port in';
+    inPort.dataset.nodeId = id;
+    inPort.dataset.portType = 'in';
+    inPort.title = '입력';
+    el.appendChild(inPort);
+
+    if (def?.multiIn) {
+      const inPort2 = document.createElement('div');
+      inPort2.className = 'port in';
+      inPort2.style.top = '75%';
+      inPort2.dataset.nodeId = id;
+      inPort2.dataset.portType = 'in2';
+      inPort2.title = '입력2';
+      el.appendChild(inPort2);
+    }
+  }
+
+  if (type !== 'out' && !def?.isHW) {
+    const outPort = document.createElement('div');
+    outPort.className = 'port out';
+    outPort.dataset.nodeId = id;
+    outPort.dataset.portType = 'out';
+    outPort.title = '출력';
+    el.appendChild(outPort);
+
+    if (def?.multiOut) {
+      const outPort2 = document.createElement('div');
+      outPort2.className = 'port out';
+      outPort2.style.top = '75%';
+      outPort2.dataset.nodeId = id;
+      outPort2.dataset.portType = 'out2';
+      outPort2.title = '출력2';
+      el.appendChild(outPort2);
+    }
+  }
+
+  if (def?.hasHW) {
+    const hwPort = document.createElement('div');
+    hwPort.className = 'port hw-in';
+    hwPort.dataset.nodeId = id;
+    hwPort.dataset.portType = 'hw';
+    hwPort.title = '하드웨어 연결';
+    hwPort.style.background = 'rgba(247,118,142,0.3)';
+    hwPort.style.borderColor = 'var(--hw)';
+    el.appendChild(hwPort);
+  }
+
+  if (def?.isHW) {
+    const outPort = document.createElement('div');
+    outPort.className = 'port out';
+    outPort.dataset.nodeId = id;
+    outPort.dataset.portType = 'hw-out';
+    outPort.title = '알고리즘 연결';
+    outPort.style.background = 'rgba(247,118,142,0.3)';
+    outPort.style.borderColor = 'var(--hw)';
+    el.appendChild(outPort);
+  }
+
+  // Interactions
+  el.addEventListener('mousedown', onNodeMouseDown);
+  el.addEventListener('dblclick', () => openViz(id));
+  el.addEventListener('contextmenu', e => showCtxMenu(e, id));
+  el.addEventListener('click', e => { e.stopPropagation(); selectNode(id); });
+
+  document.getElementById('canvas').appendChild(el);
+  nodeData.el = el;
+  state.nodes.set(id, nodeData);
+  updateNodeDisplay(id);
+  updateStatusBar();
+  return nodeData;
+}
+
+function updateNodeDisplay(id) {
+  const node = state.nodes.get(id);
+  if (!node) return;
+  const body = document.getElementById(id + '-body');
+  if (!body) return;
+
+  let html = '';
+  if (node.type === 'raw') {
+    const sizes = [100, 500, 2000, 10000];
+    html += `<div class="node-stat">📦 n = <b style="color:var(--type)">${sizes[node.upgrades.dataSize]}</b></div>`;
+    html += `<div class="node-stat">⚡ 속도 = <b style="color:var(--ok)">${node.upgrades.speed > 0 ? Math.pow(2, node.upgrades.speed) : 1}x</b></div>`;
+    html += `<div class="node-stat" style="margin-top:4px;color:var(--text3)">누적: ${fmtTB(state.throughput)}</div>`;
+  } else if (node.type === 'algo') {
+    const cfg = ALGO_CONFIG[node.subtype];
+    if (cfg) html += `<div class="node-stat" style="color:var(--text3)">${cfg.complexity}</div>`;
+    if (node.stats.comparisons > 0) {
+      html += `<div class="node-stat">비교: <b>${fmtNum(node.stats.comparisons)}</b></div>`;
+      if (node.stats.swaps > 0) html += `<div class="node-stat">교환: <b>${fmtNum(node.stats.swaps)}</b></div>`;
+      html += `<div class="node-stat">시간: <b style="color:var(--ok)">${node.stats.time}ms</b></div>`;
+    }
+    if (node.hw) {
+      html += `<div class="node-stat" style="color:var(--hw);margin-top:2px">🔌 ${node.hw}</div>`;
+    }
+  } else if (node.type === 'hw') {
+    const icons = { CPU: '🖥', GPU: '🎮', RAM: '💾' };
+    html += `<div class="node-stat">${icons[node.subtype] || ''} ${node.subtype}</div>`;
+    if (node.subtype === 'CPU') html += `<div class="node-stat" style="color:var(--text3)">코어: ${node.upgrades.cores}</div>`;
+  } else if (node.type === 'out') {
+    if (node.stats.throughput > 0) {
+      html += `<div class="node-stat" style="color:var(--ok)">✓ ${fmtTB(node.stats.throughput)} TB 처리</div>`;
+    }
+  } else if (node.type === 'type') {
+    const typeNames = { IntegerArray: 'int[]', Graph: 'graph', Tree: 'tree', String: 'string' };
+    html += `<div class="node-stat" style="color:${TYPE_COLORS[typeNames[node.subtype]] || 'var(--type)'}">→ ${typeNames[node.subtype] || node.subtype}</div>`;
+  } else if (node.type === 'util') {
+    const hints = {
+      Split: '입력→2출력', Duplicate: '복사→2출력', Merge: '2입력→1출력',
+      Filter: '조건 필터링', Shuffle: '순서 랜덤화', Delay: '속도 감소'
+    };
+    html += `<div class="node-stat" style="color:var(--text3)">${hints[node.subtype] || ''}</div>`;
+  }
+  body.innerHTML = html;
+}
+
+function fmtTB(n) { if (n < 1000) return n.toFixed(1); if (n < 1e6) return (n/1000).toFixed(1) + 'K'; return (n/1e6).toFixed(2) + 'M'; }
+function fmtNum(n) { return n.toLocaleString(); }
+
+// ==================== DRAG & DROP ====================
+function setupSidebarDrag() {
+  document.querySelectorAll('.node-item[draggable]').forEach(item => {
+    item.addEventListener('dragstart', e => {
+      e.dataTransfer.setData('text/plain', JSON.stringify({ type: item.dataset.type, subtype: item.dataset.subtype }));
+      const ghost = document.getElementById('drag-ghost');
+      ghost.textContent = item.textContent.trim();
+      ghost.style.display = 'block';
+    });
+    item.addEventListener('dragend', () => { document.getElementById('drag-ghost').style.display = 'none'; });
+  });
+  document.addEventListener('dragover', e => {
+    const ghost = document.getElementById('drag-ghost');
+    ghost.style.left = (e.clientX + 10) + 'px';
+    ghost.style.top = (e.clientY + 10) + 'px';
+  });
+}
+
+function setupCanvasDrop() {
+  const wrap = document.getElementById('canvas-wrap');
+  wrap.addEventListener('dragover', e => e.preventDefault());
+  wrap.addEventListener('drop', e => {
+    e.preventDefault();
+    try {
+      const data = JSON.parse(e.dataTransfer.getData('text/plain'));
+      const rect = wrap.getBoundingClientRect();
+      const x = e.clientX - rect.left - 70;
+      const y = e.clientY - rect.top - 30;
+      createNode(data.type, data.subtype, x, y);
+    } catch(err) {}
+  });
+
+  wrap.addEventListener('click', () => { selectNode(null); hideCtxMenu(); });
+}
+
+// ==================== NODE DRAG ====================
+function onNodeMouseDown(e) {
+  if (e.target.classList.contains('port')) return;
+  if (e.button !== 0) return;
+  const id = e.currentTarget.id;
+  const node = state.nodes.get(id);
+  if (!node || id === 'n1') return; // raw input fixed
+
+  state.draggingNode = id;
+  const rect = node.el.getBoundingClientRect();
+  state.dragOffset = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+
+  function onMove(e) {
+    if (!state.draggingNode) return;
+    const wrap = document.getElementById('canvas-wrap');
+    const wr = wrap.getBoundingClientRect();
+    const x = Math.max(0, e.clientX - wr.left - state.dragOffset.x);
+    const y = Math.max(0, e.clientY - wr.top - state.dragOffset.y);
+    node.x = x; node.y = y;
+    node.el.style.left = x + 'px';
+    node.el.style.top = y + 'px';
+    updateConnections();
+  }
+  function onUp() {
+    state.draggingNode = null;
+    document.removeEventListener('mousemove', onMove);
+    document.removeEventListener('mouseup', onUp);
+  }
+  document.addEventListener('mousemove', onMove);
+  document.addEventListener('mouseup', onUp);
+  e.preventDefault();
+}
+
+// ==================== CONNECTION DRAWING ====================
+function setupConnectionDrawing() {
+  const svg = document.getElementById('connections');
+
+  document.getElementById('canvas').addEventListener('mousedown', e => {
+    if (!e.target.classList.contains('port')) return;
+    e.stopPropagation();
+    const portEl = e.target;
+    const nodeId = portEl.dataset.nodeId;
+    const portType = portEl.dataset.portType;
+
+    if (portType === 'in' || portType === 'in2' || portType === 'hw') return;
+
+    state.connecting = true;
+    state.connectFrom = { nodeId, portType };
+
+    const tempLine = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    tempLine.setAttribute('fill', 'none');
+    tempLine.setAttribute('stroke', 'rgba(123,140,222,0.6)');
+    tempLine.setAttribute('stroke-width', '2');
+    tempLine.setAttribute('stroke-dasharray', '6 3');
+    svg.appendChild(tempLine);
+    state.tempLine = tempLine;
+
+    const startPos = getPortPos(nodeId, portType);
+
+    function onMove(e) {
+      if (!state.connecting) return;
+      const wrap = document.getElementById('canvas-wrap');
+      const wr = wrap.getBoundingClientRect();
+      const ex = e.clientX - wr.left;
+      const ey = e.clientY - wr.top;
+      const d = bezierPath(startPos.x, startPos.y, ex, ey);
+      tempLine.setAttribute('d', d);
+    }
+
+    function onUp(e) {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      if (!state.connecting) return;
+      state.connecting = false;
+
+      if (state.tempLine) { svg.removeChild(state.tempLine); state.tempLine = null; }
+
+      const target = document.elementFromPoint(e.clientX, e.clientY);
+      if (target && target.classList.contains('port')) {
+        const toNodeId = target.dataset.nodeId;
+        const toPortType = target.dataset.portType;
+        if (toNodeId !== nodeId && (toPortType === 'in' || toPortType === 'in2' || toPortType === 'hw')) {
+          addConnection(nodeId, portType, toNodeId, toPortType);
+        }
+      }
+      state.connectFrom = null;
+    }
+
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+    e.preventDefault();
+  });
+}
+
+function addConnection(fromId, fromPort, toId, toPort) {
+  // Validate
+  const fromNode = state.nodes.get(fromId);
+  const toNode = state.nodes.get(toId);
+  if (!fromNode || !toNode) return;
+
+  // Check for duplicate
+  const exists = state.connections.find(c =>
+    c.fromId === fromId && c.fromPort === fromPort && c.toId === toId && c.toPort === toPort
+  );
+  if (exists) return;
+
+  // Type check
+  const valid = checkTypeCompatibility(fromNode, toNode, fromPort, toPort);
+
+  const conn = { fromId, fromPort, toId, toPort, valid, isHW: fromPort === 'hw-out' || toPort === 'hw', id: 'c' + Date.now() };
+  state.connections.push(conn);
+
+  // If HW connection, mark algo node
+  if (toPort === 'hw' && fromNode.type === 'hw') {
+    toNode.hw = fromNode.subtype;
+
+    // Achievement: GPU + Bubble Sort
+    if (fromNode.subtype === 'GPU' && toNode.subtype === 'BubbleSort') {
+      unlockAchievement('gpuwaste');
+      checkChallenge('gpuwaste');
+    }
+  }
+
+  if (!valid) {
+    typeErrors++;
+    if (typeErrors >= 5) unlockAchievement('typebust');
+    setStatus('타입 오류: ' + getTypeError(fromNode, toNode), 'error');
+  }
+
+  renderConnections();
+  updateNodeDisplay(fromId);
+  updateNodeDisplay(toId);
+  updateStatusBar();
+  checkChallenges();
+}
+
+function checkTypeCompatibility(fromNode, toNode, fromPort, toPort) {
+  if (toPort === 'hw') return toNode.def?.hasHW && fromNode.type === 'hw';
+  if (fromPort === 'hw-out') return toNode.def?.hasHW;
+
+  const outType = getNodeOutputType(fromNode);
+  const inAccepts = getNodeInputType(toNode);
+
+  if (outType === 'ANY' || inAccepts === 'ANY') return true;
+  if (Array.isArray(inAccepts)) return inAccepts.includes(outType);
+  return outType === inAccepts;
+}
+
+function getNodeOutputType(node) {
+  if (node.type === 'raw') return 'RAW';
+  if (node.type === 'type') {
+    const map = { IntegerArray: 'int[]', Graph: 'graph', Tree: 'tree', String: 'string' };
+    return map[node.subtype] || 'ANY';
+  }
+  if (node.type === 'util') return 'ANY';
+  if (node.type === 'algo') {
+    const cfg = ALGO_CONFIG[node.subtype];
+    return cfg ? cfg.accepts[0] : 'ANY';
+  }
+  return 'ANY';
+}
+
+function getNodeInputType(node) {
+  if (node.type === 'type') return 'RAW';
+  if (node.type === 'util') return 'ANY';
+  if (node.type === 'out') return 'ANY';
+  if (node.type === 'algo') {
+    const cfg = ALGO_CONFIG[node.subtype];
+    return cfg ? cfg.accepts : 'ANY';
+  }
+  return 'ANY';
+}
+
+function getTypeError(from, to) {
+  const outType = getNodeOutputType(from);
+  const inType = getNodeInputType(to);
+  return `expected ${Array.isArray(inType) ? inType.join('/') : inType}, got ${outType}`;
+}
+
+// ==================== CONNECTION RENDER ====================
+function renderConnections() {
+  const svg = document.getElementById('connections');
+  svg.innerHTML = '';
+
+  for (const conn of state.connections) {
+    const from = getPortPos(conn.fromId, conn.fromPort);
+    const to = getPortPos(conn.toId, conn.toPort);
+    if (!from || !to) continue;
+
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    path.setAttribute('d', bezierPath(from.x, from.y, to.x, to.y));
+    path.setAttribute('fill', 'none');
+    path.setAttribute('stroke-width', '2');
+    path.setAttribute('id', 'conn-' + conn.id);
+
+    if (conn.isHW || conn.fromPort === 'hw-out' || conn.toPort === 'hw') {
+      path.setAttribute('stroke', 'rgba(247,118,142,0.5)');
+      path.setAttribute('stroke-dasharray', '5 3');
+    } else if (!conn.valid) {
+      path.setAttribute('stroke', 'var(--danger)');
+      path.setAttribute('stroke-dasharray', '6 3');
+    } else if (state.running) {
+      path.setAttribute('stroke', 'rgba(100,200,255,0.6)');
+    } else {
+      path.setAttribute('stroke', 'rgba(255,255,255,0.25)');
+    }
+
+    svg.appendChild(path);
+  }
+}
+
+function updateConnections() { renderConnections(); }
+
+function getPortPos(nodeId, portType) {
+  const node = state.nodes.get(nodeId);
+  if (!node || !node.el) return null;
+  const el = node.el;
+  const wrap = document.getElementById('canvas-wrap');
+  const wr = wrap.getBoundingClientRect();
+  const nr = el.getBoundingClientRect();
+
+  const nx = nr.left - wr.left;
+  const ny = nr.top - wr.top;
+  const nw = nr.width;
+  const nh = nr.height;
+
+  if (portType === 'out' || portType === 'hw-out') return { x: nx + nw, y: ny + nh * 0.4 };
+  if (portType === 'out2') return { x: nx + nw, y: ny + nh * 0.75 };
+  if (portType === 'in') return { x: nx, y: ny + nh * 0.4 };
+  if (portType === 'in2') return { x: nx, y: ny + nh * 0.75 };
+  if (portType === 'hw') return { x: nx + nw * 0.5, y: ny };
+  return { x: nx + nw / 2, y: ny + nh / 2 };
+}
+
+function bezierPath(x1, y1, x2, y2) {
+  const cx = (x2 - x1) * 0.5;
+  return `M${x1},${y1} C${x1+cx},${y1} ${x2-cx},${y2} ${x2},${y2}`;
+}
+
+// ==================== SIMULATION ====================
+function startSim() {
+  if (state.running) return;
+
+  // Validate pipeline
+  const errors = validatePipeline();
+  if (errors.length > 0) {
+    setStatus('⚠ ' + errors[0], 'error');
+    return;
+  }
+
+  state.running = true;
+  setStatus('실행 중...', 'ok');
+
+  // Mark all nodes
+  state.nodes.forEach(node => {
+    node.running = true; node.done = false; node.error = false;
+    node.el.classList.add('running');
+    node.el.classList.remove('done', 'error');
+  });
+
+  renderConnections();
+  unlockAchievement('hello');
+
+  // Run algorithms
+  const algoNodes = [...state.nodes.values()].filter(n => n.type === 'algo');
+  algoNodes.forEach(node => simulateAlgo(node));
+
+  // Count parallel
+  if (algoNodes.length >= 3) unlockAchievement('parallel');
+
+  // Check memory challenge
+  algoNodes.forEach(node => {
+    if (node.subtype === 'MergeSort' && !node.hw) {
+      const rawNode = [...state.nodes.values()].find(n => n.type === 'raw');
+      const sizes = [100, 500, 2000, 10000];
+      if (rawNode && sizes[rawNode.upgrades.dataSize] >= 2000) {
+        unlockAchievement('memhog');
+        checkChallenge('memory');
+        setStatus('⚠ 메모리 부족 — Merge Sort 처리 속도 50% 감소', 'warn');
+      }
+    }
+  });
+
+  // Check worst case Quick Sort
+  const qs = algoNodes.find(n => n.subtype === 'QuickSort');
+  if (qs) {
+    const hasShuffle = state.connections.some(c => {
+      const from = state.nodes.get(c.fromId);
+      return from?.subtype === 'Shuffle' && c.toId === qs.id;
+    });
+    if (!hasShuffle) checkChallenge('worst');
+  }
+
+  // Update output nodes
+  setTimeout(() => {
+    state.nodes.forEach(node => {
+      node.running = false; node.done = true;
+      node.el.classList.remove('running');
+      node.el.classList.add('done');
+      if (node.type === 'out') {
+        const raw = [...state.nodes.values()].find(n => n.type === 'raw');
+        const sizes = [100, 500, 2000, 10000];
+        const n = raw ? sizes[raw.upgrades.dataSize] : 100;
+        node.stats.throughput += n * 0.001;
+      }
+      updateNodeDisplay(node.id);
+    });
+    state.running = false;
+    renderConnections();
+    setStatus('✓ 실행 완료', 'ok');
+    checkChallenges();
+    checkChallenge('first');
+  }, 2000);
+}
+
+function simulateAlgo(node) {
+  const cfg = ALGO_CONFIG[node.subtype];
+  if (!cfg) return;
+  const raw = [...state.nodes.values()].find(n => n.type === 'raw');
+  const sizes = [100, 500, 2000, 10000];
+  const n = raw ? sizes[raw.upgrades.dataSize] : 100;
+
+  let multiplier = 1;
+  if (node.hw === 'CPU' && cfg.cpuBoost) multiplier = 2;
+  if (node.hw === 'GPU' && cfg.gpuBoost) multiplier = 3;
+  if (node.hw === 'RAM' && cfg.ramBoost) multiplier = 1.5;
+
+  // Calculate stats
+  let comparisons, swaps, timeMs;
+  switch (node.subtype) {
+    case 'BubbleSort':
+      comparisons = Math.round(n * (n-1) / 2);
+      swaps = Math.round(comparisons * 0.3);
+      timeMs = Math.round(comparisons / (100 * multiplier));
+      break;
+    case 'SelectionSort':
+      comparisons = Math.round(n * (n-1) / 2);
+      swaps = n - 1;
+      timeMs = Math.round(comparisons / (120 * multiplier));
+      break;
+    case 'InsertionSort':
+      comparisons = Math.round(n * n / 4);
+      swaps = comparisons;
+      timeMs = Math.round(comparisons / (150 * multiplier));
+      break;
+    case 'MergeSort':
+      comparisons = Math.round(n * Math.log2(n));
+      swaps = comparisons;
+      timeMs = Math.round(comparisons / (200 * multiplier));
+      if (!node.hw || node.hw !== 'RAM') timeMs = Math.round(timeMs * (n > 500 ? 1.5 : 1));
+      break;
+    case 'QuickSort':
+      comparisons = Math.round(n * Math.log2(n) * 1.2);
+      swaps = Math.round(comparisons * 0.4);
+      timeMs = Math.round(comparisons / (250 * multiplier));
+      break;
+    case 'HeapSort':
+      comparisons = Math.round(2 * n * Math.log2(n));
+      swaps = Math.round(n * Math.log2(n));
+      timeMs = Math.round(comparisons / (180 * multiplier));
+      break;
+    case 'BFS':
+    case 'DFS':
+      comparisons = n * 4; swaps = 0; timeMs = Math.round(n * 0.5 / multiplier);
+      break;
+    case 'Dijkstra':
+      comparisons = Math.round(n * Math.log2(n) * 3); swaps = 0; timeMs = Math.round(comparisons / (80 * multiplier));
+      break;
+    default:
+      comparisons = n; swaps = 0; timeMs = 100;
+  }
+
+  node.stats = { comparisons, swaps, time: timeMs, memory: swaps * 8, throughput: n * cfg.coeff * 0.001 };
+  state.throughput += n * cfg.coeff * 0.001;
+
+  updateNodeDisplay(node.id);
+  updateThroughputDisplay();
+}
+
+function validatePipeline() {
+  const errors = [];
+  const invalidConns = state.connections.filter(c => !c.valid && !c.isHW && c.toPort !== 'hw');
+  if (invalidConns.length > 0) errors.push('타입 에러가 있는 연결이 있습니다');
+
+  const hasRawConn = state.connections.some(c => c.fromId === 'n1');
+  if (!hasRawConn) errors.push('RAW INPUT이 연결되지 않았습니다');
+
+  return errors;
+}
+
+function stopSim() {
+  state.running = false;
+  state.nodes.forEach(node => {
+    node.running = false;
+    node.el.classList.remove('running');
+  });
+  renderConnections();
+  setStatus('정지됨', 'warn');
+}
+
+function resetSim() {
+  stopSim();
+  state.nodes.forEach((node, id) => {
+    if (id !== 'n1') return;
+    node.stats = { comparisons: 0, swaps: 0, time: 0, memory: 0, throughput: 0 };
+    node.done = false; node.error = false;
+    node.el.classList.remove('done', 'error');
+    updateNodeDisplay(id);
+  });
+  // Keep only raw input, remove all other nodes
+  const toDelete = [...state.nodes.keys()].filter(id => id !== 'n1');
+  toDelete.forEach(deleteNode);
+  state.connections = [];
+  renderConnections();
+  state.throughput = 0;
+  state.throughputRate = 0;
+  updateThroughputDisplay();
+  setStatus('초기화 완료', 'ok');
+  updateStatusBar();
+}
+
+// ==================== PARTICLES ====================
+const particles = [];
+
+function startParticleLoop() {
+  const canvas = document.getElementById('particle-canvas');
+  const ctx = canvas.getContext('2d');
+  let last = 0;
+
+  function loop(ts) {
+    const dt = Math.min(ts - last, 50);
+    last = ts;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    if (state.running) {
+      // Spawn particles on connections
+      if (Math.random() < 0.4) {
+        const validConns = state.connections.filter(c => c.valid && !c.isHW && c.toPort !== 'hw');
+        if (validConns.length > 0) {
+          const conn = validConns[Math.floor(Math.random() * validConns.length)];
+          const from = getPortPos(conn.fromId, conn.fromPort);
+          const to = getPortPos(conn.toId, conn.toPort);
+          if (from && to) {
+            particles.push({ x: from.x, y: from.y, tx: to.x, ty: to.y, t: 0, color: getConnColor(conn), size: Math.random() * 2 + 1 });
+          }
+        }
+      }
+    }
+
+    for (let i = particles.length - 1; i >= 0; i--) {
+      const p = particles[i];
+      p.t += dt * 0.0008;
+      if (p.t >= 1) { particles.splice(i, 1); continue; }
+
+      const t = p.t;
+      const cx = (p.tx - p.x) * 0.5;
+      const bx = p.x + 3 * cx * t * (1 - t) * (t < 0.5 ? 1 : 1) +
+        (p.x + (p.tx - p.x) * t);
+      // Simple linear lerp for performance
+      const lx = p.x + (p.tx - p.x) * t;
+      const ly = p.y + (p.ty - p.y) * t;
+
+      ctx.beginPath();
+      ctx.arc(lx, ly, p.size, 0, Math.PI * 2);
+      ctx.fillStyle = p.color;
+      ctx.globalAlpha = 0.8 * (1 - p.t * 0.5);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+
+    requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
+}
+
+function getConnColor(conn) {
+  const from = state.nodes.get(conn.fromId);
+  if (!from) return 'rgba(100,200,255,0.8)';
+  const type = getNodeOutputType(from);
+  const colorMap = {
+    'RAW': 'rgba(255,255,255,0.8)', 'int[]': 'rgba(123,140,222,0.8)',
+    'graph': 'rgba(187,154,247,0.8)', 'tree': 'rgba(115,218,202,0.8)',
+    'string': 'rgba(224,175,104,0.8)', 'ANY': 'rgba(224,175,104,0.8)',
+  };
+  return colorMap[type] || 'rgba(100,200,255,0.8)';
+}
+
+// ==================== THROUGHPUT ====================
+function startThroughputLoop() {
+  let prev = state.throughput;
+  setInterval(() => {
+    if (state.running) {
+      state.throughputRate = (state.throughput - prev);
+      prev = state.throughput;
+    } else {
+      state.throughputRate = 0;
+    }
+    updateThroughputDisplay();
+    updateStatusBar();
+  }, 1000);
+}
+
+function updateThroughputDisplay() {
+  document.getElementById('throughput-display').textContent = fmtTB(state.throughput);
+  // Update raw input display
+  const raw = [...state.nodes.values()].find(n => n.type === 'raw');
+  if (raw) updateNodeDisplay(raw.id);
+}
+
+// ==================== SELECT / DELETE ====================
+function selectNode(id) {
+  if (state.selected) {
+    const prev = state.nodes.get(state.selected);
+    if (prev) prev.el.classList.remove('selected');
+  }
+  state.selected = id;
+  if (id) {
+    const node = state.nodes.get(id);
+    if (node) { node.el.classList.add('selected'); showNodeInfo(id); showUpgrades(id); }
+  } else {
+    document.getElementById('node-info').innerHTML = '<span style="color:var(--text3)">노드를 클릭하세요</span>';
+    document.getElementById('upgrade-section').style.display = 'none';
+  }
+}
+
+function showNodeInfo(id) {
+  const node = state.nodes.get(id);
+  if (!node) return;
+  const info = document.getElementById('node-info');
+  const def = node.def;
+  let html = `<div style="color:${def?.color || 'var(--text)'};font-weight:700;margin-bottom:4px">${def?.label || node.key}</div>`;
+  if (node.type === 'algo') {
+    const cfg = ALGO_CONFIG[node.subtype];
+    if (cfg) {
+      html += `<div>복잡도: ${cfg.complexity}</div>`;
+      html += `<div>CPU 부스트: ${cfg.cpuBoost ? '✓' : '✗'}</div>`;
+      html += `<div>GPU 부스트: ${cfg.gpuBoost ? '✓' : '✗'}</div>`;
+      html += `<div>RAM 부스트: ${cfg.ramBoost ? '✓' : '✗'}</div>`;
+    }
+  }
+  info.innerHTML = html;
+}
+
+function showUpgrades(id) {
+  const node = state.nodes.get(id);
+  if (!node) return;
+  const section = document.getElementById('upgrade-section');
+  const list = document.getElementById('upgrade-list');
+
+  const upgrades = [];
+  if (node.type === 'raw') {
+    const sizes = [100, 500, 2000, 10000];
+    const costs = [10, 50, 200];
+    if (node.upgrades.dataSize < 3) {
+      upgrades.push({ label: `데이터 크기 n=${sizes[node.upgrades.dataSize+1]}`, cost: costs[node.upgrades.dataSize], action: () => { node.upgrades.dataSize++; updateNodeDisplay(id); } });
+    }
+    const speedCosts = [20, 100, 500];
+    if (node.upgrades.speed < 3) {
+      upgrades.push({ label: `전송 속도 ${Math.pow(2, node.upgrades.speed+1)}x`, cost: speedCosts[node.upgrades.speed], action: () => { node.upgrades.speed++; updateNodeDisplay(id); } });
+    }
+  } else if (node.type === 'hw' && node.subtype === 'CPU') {
+    const coreCosts = [30, 150, 800];
+    const coreIdx = Math.log2(node.upgrades.cores);
+    if (coreIdx < 3) {
+      upgrades.push({ label: `코어 ${node.upgrades.cores * 2}개`, cost: coreCosts[coreIdx], action: () => { node.upgrades.cores *= 2; updateNodeDisplay(id); } });
+    }
+  }
+
+  if (upgrades.length === 0) { section.style.display = 'none'; return; }
+  section.style.display = 'block';
+  list.innerHTML = '';
+  upgrades.forEach(u => {
+    const btn = document.createElement('button');
+    btn.className = 'upgrade-btn';
+    const canAfford = state.throughput >= u.cost;
+    btn.disabled = !canAfford;
+    btn.innerHTML = `${u.label}<span class="cost">${u.cost} TB</span>`;
+    btn.onclick = () => {
+      if (state.throughput < u.cost) return;
+      state.throughput -= u.cost;
+      u.action();
+      updateThroughputDisplay();
+      showUpgrades(id);
+    };
+    list.appendChild(btn);
+  });
+}
+
+function deleteSelected() {
+  if (!state.selected || state.selected === 'n1') return;
+  deleteNode(state.selected);
+  selectNode(null);
+}
+
+function deleteNode(id) {
+  const node = state.nodes.get(id);
+  if (!node) return;
+  node.el.remove();
+  state.nodes.delete(id);
+  state.connections = state.connections.filter(c => c.fromId !== id && c.toId !== id);
+  renderConnections();
+  updateStatusBar();
+}
+
+// ==================== VIZ POPUP ====================
+function openViz(id) {
+  const node = state.nodes.get(id);
+  if (!node || node.type !== 'algo' && node.type !== 'out') return;
+
+  const popup = document.getElementById('viz-popup');
+  const titleEl = document.getElementById('viz-title');
+  titleEl.textContent = (node.def?.label || node.subtype) + ' — 시각화';
+  popup.classList.add('visible');
+  state.vizNode = id;
+
+  showVizStats(node);
+  startVizAnimation(node);
+}
+
+function showVizStats(node) {
+  const el = document.getElementById('viz-stats');
+  if (node.type === 'algo' && node.stats.comparisons > 0) {
+    el.innerHTML = `
+      <div class="viz-stat"><div class="vl">${fmtNum(node.stats.comparisons)}</div><div>비교 횟수</div></div>
+      <div class="viz-stat"><div class="vl">${fmtNum(node.stats.swaps)}</div><div>교환 횟수</div></div>
+      <div class="viz-stat"><div class="vl" style="color:var(--ok)">${node.stats.time}ms</div><div>소요 시간</div></div>
+      <div class="viz-stat"><div class="vl" style="color:var(--type)">${fmtTB(node.stats.throughput)} TB</div><div>처리량</div></div>
+    `;
+  } else {
+    el.innerHTML = '<div style="color:var(--text3);font-size:11px;padding:4px">실행 후 통계가 표시됩니다</div>';
+  }
+}
+
+function startVizAnimation(node) {
+  const canvas = document.getElementById('viz-canvas');
+  const ctx = canvas.getContext('2d');
+  canvas.width = canvas.offsetWidth;
+  canvas.height = canvas.offsetHeight;
+
+  if (state.vizAnimation) { cancelAnimationFrame(state.vizAnimation); }
+
+  const raw = [...state.nodes.values()].find(n => n.type === 'raw');
+  const sizes = [100, 500, 2000, 10000];
+  const n = Math.min(raw ? sizes[raw.upgrades.dataSize] : 100, 80);
+
+  // Generate data
+  let arr = Array.from({ length: n }, (_, i) => Math.random());
+
+  if (node.type === 'algo' && (node.subtype.includes('Sort') || node.subtype === 'HeapSort')) {
+    drawSortViz(ctx, canvas, arr, node.subtype);
+  } else if (node.type === 'algo' && ['BFS', 'DFS', 'Dijkstra'].includes(node.subtype)) {
+    drawGraphViz(ctx, canvas, node.subtype);
+  } else {
+    drawGenericViz(ctx, canvas);
+  }
+}
+
+function drawSortViz(ctx, canvas, arr, algoName) {
+  const w = canvas.width, h = canvas.height;
+  const barW = Math.max(2, (w - 20) / arr.length);
+  let step = 0;
+  const maxSteps = arr.length * arr.length;
+  let data = [...arr];
+  let comparing = [-1, -1];
+  let swapped = -1;
+
+  // Simple bubble sort step by step
+  let i = 0, j = 0;
+
+  function frame() {
+    ctx.fillStyle = '#0f1117';
+    ctx.fillRect(0, 0, w, h);
+
+    // Draw bars
+    for (let k = 0; k < data.length; k++) {
+      const bh = data[k] * (h - 20);
+      const bx = 10 + k * barW;
+      const by = h - bh;
+      if (k === comparing[0] || k === comparing[1]) {
+        ctx.fillStyle = '#f38ba8';
+      } else if (k === swapped) {
+        ctx.fillStyle = '#a6e3a1';
+      } else if (k >= data.length - step / data.length | 0) {
+        ctx.fillStyle = 'rgba(76,175,125,0.5)';
+      } else {
+        ctx.fillStyle = 'rgba(123,140,222,0.7)';
+      }
+      ctx.fillRect(bx, by, barW - 1, bh);
+    }
+
+    // Sort step
+    if (i < data.length - 1) {
+      if (j < data.length - i - 1) {
+        comparing = [j, j + 1];
+        if (data[j] > data[j + 1]) {
+          [data[j], data[j + 1]] = [data[j + 1], data[j]];
+          swapped = j;
+        } else {
+          swapped = -1;
+        }
+        j++;
+      } else {
+        j = 0; i++;
+        comparing = [-1, -1];
+      }
+      step++;
+    }
+
+    // Label
+    ctx.fillStyle = 'rgba(255,255,255,0.5)';
+    ctx.font = '11px monospace';
+    ctx.fillText(algoName + ' — n=' + data.length, 10, 14);
+
+    if (i < data.length - 1) {
+      state.vizAnimation = requestAnimationFrame(frame);
+    } else {
+      comparing = [-1, -1];
+      ctx.fillStyle = 'rgba(166,227,161,0.3)';
+      ctx.fillRect(0, 0, w, h);
+      ctx.fillStyle = 'rgba(255,255,255,0.8)';
+      ctx.font = '14px monospace';
+      ctx.fillText('정렬 완료!', w / 2 - 40, h / 2);
+    }
+  }
+  state.vizAnimation = requestAnimationFrame(frame);
+}
+
+function drawGraphViz(ctx, canvas, algo) {
+  const w = canvas.width, h = canvas.height;
+  const nodeCount = 12;
+  const nodes = Array.from({ length: nodeCount }, (_, i) => ({
+    x: 60 + Math.random() * (w - 120),
+    y: 30 + Math.random() * (h - 60),
+    visited: false, current: false, dist: Infinity,
+  }));
+  nodes[0].dist = 0;
+
+  const edges = [];
+  for (let i = 0; i < nodeCount; i++) {
+    const count = 2 + Math.floor(Math.random() * 2);
+    for (let j = 0; j < count; j++) {
+      const to = Math.floor(Math.random() * nodeCount);
+      if (to !== i) edges.push([i, to]);
+    }
+  }
+
+  let queue = [0];
+  let visitOrder = [];
+  let frame = 0;
+
+  function tick() {
+    ctx.fillStyle = '#0f1117';
+    ctx.fillRect(0, 0, w, h);
+
+    // Draw edges
+    ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+    ctx.lineWidth = 1;
+    edges.forEach(([a, b]) => {
+      ctx.beginPath();
+      ctx.moveTo(nodes[a].x, nodes[a].y);
+      ctx.lineTo(nodes[b].x, nodes[b].y);
+      ctx.stroke();
+    });
+
+    // Step
+    if (frame % 8 === 0 && queue.length > 0) {
+      const cur = queue.shift();
+      nodes[cur].visited = true;
+      visitOrder.push(cur);
+      edges.filter(e => e[0] === cur && !nodes[e[1]].visited).forEach(e => {
+        queue.push(e[1]);
+        nodes[e[1]].current = true;
+      });
+    }
+
+    // Draw nodes
+    nodes.forEach((node, i) => {
+      const r = 14;
+      ctx.beginPath();
+      ctx.arc(node.x, node.y, r, 0, Math.PI * 2);
+      if (node.visited) {
+        ctx.fillStyle = '#ff9e64';
+      } else if (node.current) {
+        ctx.fillStyle = 'rgba(255,158,100,0.4)';
+      } else {
+        ctx.fillStyle = '#1e2030';
+      }
+      ctx.fill();
+      ctx.strokeStyle = node.visited ? '#ff9e64' : 'rgba(255,255,255,0.2)';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+      ctx.fillStyle = '#cdd6f4';
+      ctx.font = '10px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText(i, node.x, node.y + 3);
+      ctx.textAlign = 'left';
+    });
+
+    ctx.fillStyle = 'rgba(255,255,255,0.5)';
+    ctx.font = '11px monospace';
+    ctx.fillText(algo + ' — 방문: ' + visitOrder.length + '/' + nodeCount, 10, 14);
+
+    frame++;
+    if (queue.length > 0 || visitOrder.length < nodeCount) {
+      state.vizAnimation = requestAnimationFrame(tick);
+    }
+  }
+  state.vizAnimation = requestAnimationFrame(tick);
+}
+
+function drawGenericViz(ctx, canvas) {
+  ctx.fillStyle = '#0f1117';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = 'rgba(255,255,255,0.3)';
+  ctx.font = '13px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('알고리즘 노드를 더블클릭하세요', canvas.width / 2, canvas.height / 2);
+  ctx.textAlign = 'left';
+}
+
+function closeViz() {
+  document.getElementById('viz-popup').classList.remove('visible');
+  if (state.vizAnimation) { cancelAnimationFrame(state.vizAnimation); state.vizAnimation = null; }
+}
+
+// ==================== STATUS BAR ====================
+function setStatus(msg, type = '') {
+  const el = document.getElementById('status-msg');
+  el.textContent = msg;
+  el.className = 'status-msg ' + type;
+}
+
+function updateStatusBar() {
+  document.getElementById('node-count').textContent = state.nodes.size;
+  document.getElementById('conn-count').textContent = state.connections.length;
+  document.getElementById('throughput-rate').textContent = fmtTB(state.throughputRate);
+}
+
+// ==================== CHALLENGES ====================
+function renderChallenges() {
+  const list = document.getElementById('challenge-list');
+  list.innerHTML = '';
+  CHALLENGES.forEach(ch => {
+    const div = document.createElement('div');
+    div.className = 'challenge-card' + (ch.done ? ' done' : '');
+    div.innerHTML = `<div class="ch-name">${ch.done ? '✓ ' : ''}${ch.name}</div><div class="ch-desc">${ch.desc}</div><div class="ch-hint">💡 ${ch.hint}</div>`;
+    list.appendChild(div);
+  });
+}
+
+function checkChallenge(id) {
+  const ch = CHALLENGES.find(c => c.id === id);
+  if (ch && !ch.done) { ch.done = true; renderChallenges(); setStatus('🎯 챌린지 완료: ' + ch.name, 'ok'); }
+}
+
+function checkChallenges() {
+  const algoNodes = [...state.nodes.values()].filter(n => n.type === 'algo');
+  const outNodes = [...state.nodes.values()].filter(n => n.type === 'out');
+
+  // first pipeline
+  if (algoNodes.length > 0 && outNodes.length > 0) {
+    const hasType = [...state.nodes.values()].some(n => n.type === 'type');
+    if (hasType) checkChallenge('first');
+  }
+
+  // race: 2+ algos with same upstream duplicate
+  const dupNode = [...state.nodes.values()].find(n => n.subtype === 'Duplicate');
+  if (dupNode && algoNodes.length >= 2) checkChallenge('race');
+
+  // GPU waste
+  const gpuNode = [...state.nodes.values()].find(n => n.subtype === 'GPU');
+  if (gpuNode) {
+    const bsNode = algoNodes.find(n => n.subtype === 'BubbleSort');
+    if (bsNode && bsNode.hw === 'GPU') checkChallenge('gpuwaste');
+  }
+}
+
+// ==================== ACHIEVEMENTS ====================
+function renderAchievements() {
+  const list = document.getElementById('achievement-list');
+  list.innerHTML = '';
+  ACHIEVEMENTS.forEach(ach => {
+    const div = document.createElement('div');
+    div.className = 'achievement' + (ach.unlocked ? ' unlocked' : '');
+    div.innerHTML = `<span class="ach-icon">${ach.unlocked ? ach.icon : '🔒'}</span><span>${ach.name}: <span style="opacity:0.6">${ach.desc}</span></span>`;
+    list.appendChild(div);
+  });
+}
+
+function unlockAchievement(id) {
+  const ach = ACHIEVEMENTS.find(a => a.id === id);
+  if (ach && !ach.unlocked) {
+    ach.unlocked = true;
+    renderAchievements();
+    setStatus('🏆 업적 달성: ' + ach.name, 'ok');
+    showAchievementToast(ach);
+  }
+}
+
+function showAchievementToast(ach) {
+  const toast = document.createElement('div');
+  toast.style.cssText = 'position:fixed;top:60px;right:240px;background:#1e2030;border:1px solid rgba(249,226,175,0.4);border-radius:8px;padding:10px 14px;font-size:12px;color:var(--warn);z-index:9999;animation:fadeIn 0.3s;';
+  toast.innerHTML = `<b>${ach.icon} 업적 해제!</b><br>${ach.name}`;
+  document.body.appendChild(toast);
+  setTimeout(() => toast.remove(), 3000);
+}
+
+// ==================== CONTEXT MENU ====================
+function showCtxMenu(e, id) {
+  e.preventDefault();
+  e.stopPropagation();
+  const menu = document.getElementById('ctx-menu');
+  menu.style.display = 'block';
+  menu.style.left = e.clientX + 'px';
+  menu.style.top = e.clientY + 'px';
+
+  document.getElementById('ctx-viz').onclick = () => { openViz(id); hideCtxMenu(); };
+  document.getElementById('ctx-del').onclick = () => {
+    if (id !== 'n1') { deleteNode(id); }
+    hideCtxMenu();
+  };
+  if (id === 'n1') document.getElementById('ctx-del').style.opacity = '0.3';
+  else document.getElementById('ctx-del').style.opacity = '1';
+}
+
+function hideCtxMenu() { document.getElementById('ctx-menu').style.display = 'none'; }
+
+// ==================== START ====================
+init();
+</script>
+</body>
+</html>
