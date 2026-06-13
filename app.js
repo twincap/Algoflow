@@ -31,8 +31,12 @@ const SORT_KEYS = new Set([
 ]);
 const STRING_SORT_KEYS = new Set(["QuickSort", "RadixSort"]);
 const TRAVERSAL_KEYS = new Set(["BFS", "DFS", "BSTSearch"]);
-const MAX_NODE_LEVEL = 5;
+const MAX_NODE_LEVEL = 10;
 const RAW_BASE_MAX_VALUE = 10_000;
+const BOARD_WIDTH = 2400;
+const BOARD_HEIGHT = 1600;
+const MIN_BOARD_ZOOM = 0.45;
+const MAX_BOARD_ZOOM = 1.8;
 const PROCESS_RELEASE_MS = 360;
 const COMPLETION_FLASH_MS = 900;
 const UPLOAD_UNITS_PER_RATE = 5;
@@ -417,6 +421,18 @@ const state = {
   dragOffset: { x: 0, y: 0 },
   dragStart: { x: 0, y: 0 },
   dragMoved: false,
+  zCounter: 10,
+  viewport: {
+    zoom: 1,
+    panX: 0,
+    panY: 0,
+    panning: false,
+    panMoved: false,
+    startX: 0,
+    startY: 0,
+    startPanX: 0,
+    startPanY: 0,
+  },
   connecting: null,
   pointer: { x: 0, y: 0 },
   funds: 12400,
@@ -465,6 +481,7 @@ function init() {
   renderChallenges();
   renderAchievements();
   bindGlobalEvents();
+  applyViewportTransform();
   addNode("RawInput", 110, 120, { fixedId: "n1" });
   selectNode("n1");
   updateAll();
@@ -518,11 +535,18 @@ function bindGlobalEvents() {
 
   els.canvasWrap.addEventListener("dragover", (event) => event.preventDefault());
   els.canvasWrap.addEventListener("drop", handlePaletteDrop);
+  els.canvasWrap.addEventListener("wheel", handleCanvasWheel, { passive: false });
+  els.canvasWrap.addEventListener("pointerdown", handleCanvasPointerDown);
   els.canvasWrap.addEventListener("pointermove", (event) => {
+    handleCanvasPanMove(event);
     state.pointer = clientToCanvas(event.clientX, event.clientY);
     if (state.connecting) renderConnections();
   });
   els.canvasWrap.addEventListener("click", (event) => {
+    if (state.viewport.panMoved) {
+      state.viewport.panMoved = false;
+      return;
+    }
     if (event.target.closest(".lab-node")) return;
     if (state.connecting) cancelConnection();
     else selectNode(null);
@@ -550,7 +574,7 @@ function bindGlobalEvents() {
 
   window.addEventListener("resize", () => {
     resizeParticleCanvas();
-    renderConnections();
+    applyViewportTransform();
   });
 }
 
@@ -681,19 +705,35 @@ function hideDragGhost() {
   els.dragGhost.style.display = "none";
 }
 
-function defaultDropPoint(key) {
+function visibleWorldRect() {
   const rect = els.canvasWrap.getBoundingClientRect();
+  const topLeft = screenToWorld(0, 0);
+  const bottomRight = screenToWorld(rect.width, rect.height);
+  return {
+    left: topLeft.x,
+    top: topLeft.y,
+    width: bottomRight.x - topLeft.x,
+    height: bottomRight.y - topLeft.y,
+  };
+}
+
+function defaultDropPoint(key) {
+  const visible = visibleWorldRect();
   const index = Math.max(0, state.nodes.size - 1);
-  const compact = rect.width < 780;
+  const compact = visible.width < 780;
   const colWidth = 230;
   const rowHeight = 166;
   const nodeHeight = visualNodeHeight(key);
-  const maxY = Math.max(72, rect.height - nodeHeight - 70);
+  const left = clamp(visible.left, 0, BOARD_WIDTH - 260);
+  const top = clamp(visible.top, 0, BOARD_HEIGHT - nodeHeight - 80);
+  const right = clamp(visible.left + visible.width, 260, BOARD_WIDTH);
+  const bottom = clamp(visible.top + visible.height, 140, BOARD_HEIGHT);
+  const maxY = Math.max(top + 72, bottom - nodeHeight - 70);
   const xs = compact
-    ? [335, 105, 450].filter((x) => x <= rect.width - 210)
-    : Array.from({ length: Math.max(1, Math.floor((rect.width - 320) / colWidth)) }, (_, i) => 330 + i * colWidth);
+    ? [left + 40, left + 270, left + 385].filter((x) => x <= right - 210)
+    : Array.from({ length: Math.max(1, Math.floor((right - left - 220) / colWidth)) }, (_, i) => left + 40 + i * colWidth);
   const ys = [];
-  for (let y = 92; y <= maxY; y += rowHeight) ys.push(y);
+  for (let y = top + 40; y <= maxY; y += rowHeight) ys.push(y);
 
   for (const y of ys) {
     for (const x of xs) {
@@ -701,12 +741,12 @@ function defaultDropPoint(key) {
     }
   }
 
-  const cols = compact ? 1 : Math.max(1, Math.floor((rect.width - 320) / colWidth));
-  const fallbackX = compact ? Math.min(rect.width - 220, 335) : 330 + (index % cols) * colWidth;
-  const fallbackY = 104 + Math.floor(index / cols) * rowHeight;
+  const cols = compact ? 1 : Math.max(1, Math.floor((right - left - 220) / colWidth));
+  const fallbackX = compact ? Math.min(right - 220, left + 40) : left + 40 + (index % cols) * colWidth;
+  const fallbackY = top + 52 + Math.floor(index / cols) * rowHeight;
   return {
-    x: clamp(fallbackX, 40, rect.width - 220),
-    y: clamp(fallbackY, 56, maxY),
+    x: clamp(fallbackX, 12, BOARD_WIDTH - 220),
+    y: clamp(fallbackY, 12, BOARD_HEIGHT - nodeHeight - 20),
   };
 }
 
@@ -735,7 +775,12 @@ function handlePaletteDrop(event) {
   const key = event.dataTransfer.getData("text/plain");
   if (!nodeDefs[key]) return;
   const point = clientToCanvas(event.clientX, event.clientY);
-  addNode(key, point.x - 94, point.y - 52);
+  const nodeHeight = visualNodeHeight(key);
+  addNode(
+    key,
+    clamp(point.x - 94, 12, BOARD_WIDTH - 220),
+    clamp(point.y - 52, 12, BOARD_HEIGHT - nodeHeight - 20)
+  );
 }
 
 function addNode(key, x, y, options = {}) {
@@ -758,6 +803,7 @@ function addNode(key, x, y, options = {}) {
     def,
     x,
     y,
+    z: ++state.zCounter,
     level: 1,
     progress: 0,
     lastProgress: 0,
@@ -793,18 +839,18 @@ function renderNode(node) {
   el.dataset.nodeId = node.id;
   el.style.left = `${node.x}px`;
   el.style.top = `${node.y}px`;
+  el.style.zIndex = node.z;
   el.style.setProperty("--node-color", def.color);
 
   const inputPort = def.input ? `<span class="node-port in" data-port="in" title="입력"></span>` : "";
   const hwPort = def.hwInput ? `<span class="node-port hw" data-port="hw" title="하드웨어 입력"></span>` : "";
   const rows = def.rows.map((row, index) => {
-    const rowText = nodeRowText(node, row);
-    const value = index === 0 ? `${node.stats.rate.toFixed(1)}/s` : rowText;
+    const rowData = nodeRowData(node, row, index);
     return `
       <div class="node-row">
         <span class="row-chip" style="--row-color:${rowColor(index, def)}"></span>
-        <span class="row-label">${rowText}</span>
-        <strong>${value}</strong>
+        <span class="row-label">${rowData.label}</span>
+        <strong>${rowData.value}</strong>
       </div>
     `;
   }).join("");
@@ -903,25 +949,57 @@ function outputArtifactColor(node) {
 
 function outputArtifactTitle(node) {
   const type = getOutputType(node);
-  if (node.key === "RawInput") return "원본 데이터";
-  if (node.def.outputKind === "hardware") return `${typeLabel(type)} 신호`;
-  if (node.sort) return `${typeLabel(type)} 정렬 결과`;
-  if (node.traversal) return node.key === "BSTSearch" ? "BST 탐색 결과" : `${node.def.label} 결과`;
-  if (node.def.kind === "downloader") return `${typeLabel(type)} 데이터`;
-  if (node.def.kind === "router") return `${node.def.label} 데이터`;
-  return `${typeLabel(type)} 데이터`;
+  if (node.key === "RawInput") return "원본";
+  if (node.def.outputKind === "hardware") return typeLabel(type);
+  if (node.sort) return "정렬";
+  if (node.traversal) return "탐색";
+  if (node.def.kind === "downloader") return typeLabel(type);
+  if (node.def.kind === "router") return node.def.label.replace("기", "");
+  return typeLabel(type);
 }
 
 function outputArtifactMeta(node) {
   const amount = Math.round(Math.max(1, node.outputAmount || defaultOutputAmount(node.def)));
-  const status = isNodeOutputReady(node) ? "준비" : "처리중";
-  return `${typeLabel(getOutputType(node))} · ${formatShort(amount)}개 · ${status}`;
+  const status = isNodeOutputReady(node) ? "준비" : "중";
+  return `${formatShort(amount)}개 · ${status}`;
 }
 
 function nodeRowText(node, row) {
-  if (node.key === "RawInput" && row.startsWith("n =")) return `n = ${rawDataScale().sortCount}`;
-  if (node.key === "BSTSearch" && row.startsWith("target")) return `target = ${node.traversal?.target ?? "?"}`;
-  return row;
+  return nodeRowData(node, row, 1).label;
+}
+
+function nodeRowData(node, row, index) {
+  if (index === 0) return { label: compactRowLabel(row), value: `${node.stats.rate.toFixed(1)}/s` };
+  if (node.key === "RawInput" && row.startsWith("n =")) return { label: "n", value: `${rawDataScale().sortCount}` };
+  if (node.key === "BSTSearch" && row.startsWith("target")) return { label: "target", value: `${node.traversal?.target ?? "?"}` };
+  if (row.includes("=")) {
+    const [label, value] = row.split("=").map((part) => part.trim());
+    return { label: compactRowLabel(label), value };
+  }
+  return { label: compactRowLabel(row), value: "" };
+}
+
+function compactRowLabel(row) {
+  const labels = {
+    "패킷 스트림": "패킷",
+    "고정 시드": "시드",
+    "배열 파일": "배열",
+    "텍스트 파일": "텍스트",
+    "노드+간선": "노드",
+    "균형 트리": "균형",
+    "비교 교환": "비교",
+    "최솟값 선택": "최솟값",
+    "부분 정렬": "부분",
+    "분할 병합": "분할",
+    "피벗 비교": "피벗",
+    "자리/문자 버킷": "버킷",
+    "빈도 카운트": "카운트",
+    "넓게 탐색": "넓게",
+    "깊게 탐색": "깊게",
+    "키 비교": "비교",
+    "자금 생성": "자금",
+  };
+  return labels[row] || row;
 }
 
 function rowColor(index, def) {
@@ -977,14 +1055,15 @@ function refreshNode(node) {
   node.el.className = classNames.filter(Boolean).join(" ");
   node.el.style.left = `${node.x}px`;
   node.el.style.top = `${node.y}px`;
+  node.el.style.zIndex = node.z;
   node.el.style.setProperty("--node-color", node.def.color);
 
   node.el.querySelectorAll(".node-row").forEach((rowEl, index) => {
-    const rowText = nodeRowText(node, node.def.rows[index] || "");
+    const rowData = nodeRowData(node, node.def.rows[index] || "", index);
     const label = rowEl.querySelector(".row-label");
     const value = rowEl.querySelector("strong");
-    if (label) label.textContent = rowText;
-    if (value) value.textContent = index === 0 ? `${node.stats.rate.toFixed(1)}/s` : rowText;
+    if (label) label.textContent = rowData.label;
+    if (value) value.textContent = rowData.value;
   });
   refreshNodeProgress(node);
   refreshNodeFlow(node);
@@ -1017,6 +1096,7 @@ function handleNodePointerDown(event, id) {
   const node = state.nodes.get(id);
   if (!node) return;
 
+  bringNodeToFront(node);
   state.draggingNode = id;
   state.dragMoved = false;
   const point = clientToCanvas(event.clientX, event.clientY);
@@ -1038,18 +1118,19 @@ function handlePointerMove(event) {
   if (moved > 4) state.dragMoved = true;
   if (!state.dragMoved) return;
 
-  node.x = clamp(state.pointer.x - state.dragOffset.x, 12, els.canvasWrap.clientWidth - 210);
-  node.y = clamp(state.pointer.y - state.dragOffset.y, 12, els.canvasWrap.clientHeight - visualNodeHeight(node.key) - 20);
+  node.x = clamp(state.pointer.x - state.dragOffset.x, 12, BOARD_WIDTH - 220);
+  node.y = clamp(state.pointer.y - state.dragOffset.y, 12, BOARD_HEIGHT - visualNodeHeight(node.key) - 20);
   refreshNode(node);
   renderConnections();
 }
 
-function handlePointerUp() {
+function handlePointerUp(event) {
   if (state.draggingNode) {
     const node = state.nodes.get(state.draggingNode);
     if (node) node.el.classList.remove("dragging");
   }
   state.draggingNode = null;
+  endCanvasPan(event);
 }
 
 function handleNodeClick(event, id) {
@@ -1062,6 +1143,7 @@ function handleNodeClick(event, id) {
     return;
   }
 
+  bringNodeToFront(node);
   hideContextMenu();
   selectNode(id);
 }
@@ -1076,6 +1158,7 @@ function handlePortClick(event, id, portName) {
     return;
   }
 
+  bringNodeToFront(node);
   selectNode(id);
   hideContextMenu();
 
@@ -1091,6 +1174,12 @@ function handlePortClick(event, id, portName) {
   }
 
   setStatus("출력 연결부를 먼저 클릭하세요.", "warn");
+}
+
+function bringNodeToFront(node) {
+  if (!node) return;
+  node.z = ++state.zCounter;
+  if (node.el) node.el.style.zIndex = node.z;
 }
 
 function beginConnection(nodeId) {
@@ -1262,17 +1351,111 @@ function getPortPosition(nodeId, portName) {
   if (!node) return null;
   const port = node.el.querySelector(`.node-port[data-port="${portName}"]`);
   if (!port) return null;
-  const wrapRect = els.canvasWrap.getBoundingClientRect();
   const portRect = port.getBoundingClientRect();
-  return {
-    x: portRect.left - wrapRect.left + portRect.width / 2,
-    y: portRect.top - wrapRect.top + portRect.height / 2,
-  };
+  return clientToCanvas(portRect.left + portRect.width / 2, portRect.top + portRect.height / 2);
 }
 
 function clientToCanvas(clientX, clientY) {
   const rect = els.canvasWrap.getBoundingClientRect();
-  return { x: clientX - rect.left, y: clientY - rect.top };
+  return screenToWorld(clientX - rect.left, clientY - rect.top);
+}
+
+function screenToWorld(x, y) {
+  return {
+    x: (x - state.viewport.panX) / state.viewport.zoom,
+    y: (y - state.viewport.panY) / state.viewport.zoom,
+  };
+}
+
+function worldToScreen(point) {
+  return {
+    x: point.x * state.viewport.zoom + state.viewport.panX,
+    y: point.y * state.viewport.zoom + state.viewport.panY,
+  };
+}
+
+function applyViewportTransform() {
+  if (!els.canvas || !els.connections || !els.canvasWrap) return;
+  clampViewportPan();
+  const { zoom, panX, panY } = state.viewport;
+  const transform = `translate(${panX}px, ${panY}px) scale(${zoom})`;
+
+  els.canvas.style.width = `${BOARD_WIDTH}px`;
+  els.canvas.style.height = `${BOARD_HEIGHT}px`;
+  els.canvas.style.transform = transform;
+  els.canvas.style.transformOrigin = "0 0";
+
+  els.connections.style.width = `${BOARD_WIDTH}px`;
+  els.connections.style.height = `${BOARD_HEIGHT}px`;
+  els.connections.style.transform = transform;
+  els.connections.style.transformOrigin = "0 0";
+  els.connections.setAttribute("viewBox", `0 0 ${BOARD_WIDTH} ${BOARD_HEIGHT}`);
+
+  const minor = 24 * zoom;
+  const major = 120 * zoom;
+  const backgroundSize = `${minor}px ${minor}px, ${minor}px ${minor}px, ${major}px ${major}px, ${major}px ${major}px`;
+  const backgroundPosition = `${panX}px ${panY}px, ${panX}px ${panY}px, ${panX}px ${panY}px, ${panX}px ${panY}px`;
+  els.canvasWrap.style.backgroundSize = backgroundSize;
+  els.canvasWrap.style.backgroundPosition = backgroundPosition;
+  renderConnections();
+}
+
+function clampViewportPan() {
+  if (!els.canvasWrap) return;
+  const rect = els.canvasWrap.getBoundingClientRect();
+  const slack = 160;
+  const scaledWidth = BOARD_WIDTH * state.viewport.zoom;
+  const scaledHeight = BOARD_HEIGHT * state.viewport.zoom;
+  const minX = Math.min(slack, rect.width - scaledWidth - slack);
+  const minY = Math.min(slack, rect.height - scaledHeight - slack);
+  state.viewport.panX = clamp(state.viewport.panX, minX, slack);
+  state.viewport.panY = clamp(state.viewport.panY, minY, slack);
+}
+
+function handleCanvasWheel(event) {
+  event.preventDefault();
+  const rect = els.canvasWrap.getBoundingClientRect();
+  const screenX = event.clientX - rect.left;
+  const screenY = event.clientY - rect.top;
+  const before = screenToWorld(screenX, screenY);
+  const factor = Math.exp(-event.deltaY * 0.0012);
+  state.viewport.zoom = clamp(state.viewport.zoom * factor, MIN_BOARD_ZOOM, MAX_BOARD_ZOOM);
+  state.viewport.panX = screenX - before.x * state.viewport.zoom;
+  state.viewport.panY = screenY - before.y * state.viewport.zoom;
+  applyViewportTransform();
+}
+
+function handleCanvasPointerDown(event) {
+  if (event.button !== 0) return;
+  if (event.target.closest(".lab-node, .node-port, .canvas-readout")) return;
+  state.viewport.panning = true;
+  state.viewport.panMoved = false;
+  state.viewport.startX = event.clientX;
+  state.viewport.startY = event.clientY;
+  state.viewport.startPanX = state.viewport.panX;
+  state.viewport.startPanY = state.viewport.panY;
+  els.canvasWrap.classList.add("panning");
+  els.canvasWrap.setPointerCapture(event.pointerId);
+  event.preventDefault();
+}
+
+function handleCanvasPanMove(event) {
+  if (!state.viewport.panning) return;
+  const dx = event.clientX - state.viewport.startX;
+  const dy = event.clientY - state.viewport.startY;
+  if (Math.hypot(dx, dy) > 3) state.viewport.panMoved = true;
+  state.viewport.panX = state.viewport.startPanX + dx;
+  state.viewport.panY = state.viewport.startPanY + dy;
+  applyViewportTransform();
+}
+
+function endCanvasPan(event) {
+  if (!state.viewport.panning) return;
+  if (event?.pointerId != null && els.canvasWrap.hasPointerCapture?.(event.pointerId)) {
+    els.canvasWrap.releasePointerCapture(event.pointerId);
+  }
+  state.viewport.panning = false;
+  els.canvasWrap.classList.remove("panning");
 }
 
 function selectNode(id) {
@@ -1301,6 +1484,7 @@ function renderInspector(node) {
   const outbound = state.connections.filter((conn) => conn.fromId === node.id && conn.valid).length;
   const canUpgrade = node.level < MAX_NODE_LEVEL;
   const upgradeCost = upgradePrice(node);
+  const upgradeLabel = canUpgrade ? `업그레이드 $${formatShort(upgradeCost)}` : "최대 레벨";
   const primaryFlowLabel = node.upload ? "업로드" : "생산";
   const primaryFlowRate = node.upload ? node.flow.uploadRate : node.flow.productionRate;
   els.nodeInfo.innerHTML = `
@@ -1314,7 +1498,7 @@ function renderInspector(node) {
     </div>
     <div class="upgrade-list">
       <button class="upgrade-button" id="upgrade-selected" ${canUpgrade ? "" : "disabled"}>
-        업그레이드 $${formatShort(upgradeCost)}
+        ${upgradeLabel}
       </button>
     </div>
   `;
@@ -1629,9 +1813,9 @@ function refreshNodeFlow(node) {
   if (!flow) return;
   const buffer = Math.max(0, node.buffer || 0);
   if (node.upload) {
-    flow.textContent = `업로드 ${formatRate(node.flow.uploadRate)} · 유입 ${formatRate(node.flow.inboundRate)} · 적재 ${formatShort(buffer)}`;
+    flow.textContent = `업 ${formatRate(node.flow.uploadRate)} · 유 ${formatRate(node.flow.inboundRate)} · 적 ${formatShort(buffer)}`;
   } else {
-    flow.textContent = `생산 ${formatRate(node.flow.productionRate)} · 이동 ${formatRate(node.flow.transferRate)} · 적재 ${formatShort(buffer)}`;
+    flow.textContent = `생 ${formatRate(node.flow.productionRate)} · 이 ${formatRate(node.flow.transferRate)} · 적 ${formatShort(buffer)}`;
   }
   flow.classList.toggle("loaded", buffer >= Math.max(8, defaultOutputAmount(node.def)));
 }
@@ -2559,6 +2743,9 @@ function startAnimationLoop() {
       });
     }
 
+    ctx.save();
+    ctx.translate(state.viewport.panX, state.viewport.panY);
+    ctx.scale(state.viewport.zoom, state.viewport.zoom);
     state.particles = state.particles.filter((particle) => {
       const conn = state.connections.find((item) => item.id === particle.connId);
       if (!conn) return false;
@@ -2576,6 +2763,7 @@ function startAnimationLoop() {
       ctx.globalAlpha = 1;
       return true;
     });
+    ctx.restore();
 
     state.animation = requestAnimationFrame(loop);
   }
