@@ -22,6 +22,13 @@
   --panel-radius: 7px;
   --mono: "Cascadia Mono", "JetBrains Mono", "Fira Code", Consolas, monospace;
   --ui: Inter, "Segoe UI", system-ui, sans-serif;
+  --shell-pad: 16px;
+  --workspace-gap: 16px;
+  --library-width: 246px;
+  --mission-width: 286px;
+  --library-footer-offset: calc(var(--library-width) + var(--workspace-gap));
+  --mission-footer-offset: calc(var(--mission-width) + var(--workspace-gap));
+  --bottom-console-space: 152px;
 }
 
 * {
@@ -51,7 +58,7 @@ button {
 .app-shell {
   position: relative;
   display: grid;
-  grid-template-rows: 76px 1fr 112px;
+  grid-template-rows: 76px minmax(0, 1fr);
   width: 100vw;
   height: 100vh;
   min-width: 940px;
@@ -286,10 +293,10 @@ button {
 .workspace {
   position: relative;
   display: grid;
-  grid-template-columns: 246px minmax(420px, 1fr) 286px;
-  gap: 16px;
+  grid-template-columns: var(--library-width) minmax(420px, 1fr) var(--mission-width);
+  gap: var(--workspace-gap);
   min-height: 0;
-  padding: 0 16px 0;
+  padding: 0 var(--shell-pad) var(--shell-pad);
 }
 
 .panel-surface {
@@ -305,8 +312,11 @@ button {
 }
 
 .library-panel {
-  align-self: start;
-  max-height: calc(100vh - 218px);
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  max-height: none;
   padding: 12px;
 }
 
@@ -373,10 +383,14 @@ button {
 
 .node-palette {
   display: grid;
+  flex: 1 1 auto;
   gap: 7px;
-  max-height: calc(100vh - 328px);
+  min-height: 0;
+  max-height: none;
   overflow-y: auto;
-  padding-right: 2px;
+  padding-right: 4px;
+  padding-bottom: 12px;
+  scrollbar-gutter: stable;
 }
 
 .palette-item {
@@ -427,6 +441,7 @@ button {
 .canvas-wrap {
   position: relative;
   min-height: 0;
+  margin-bottom: var(--bottom-console-space);
   overflow: hidden;
   border: 1px solid rgba(151, 174, 207, 0.14);
   border-radius: 5px;
@@ -529,6 +544,21 @@ button {
   border-color: rgba(110, 225, 142, 0.65);
 }
 
+.lab-node.cycle-complete {
+  border-color: rgba(110, 225, 142, 0.82);
+  box-shadow: 0 0 0 1px rgba(110, 225, 142, 0.42), 0 0 26px rgba(110, 225, 142, 0.18), 0 18px 38px rgba(0, 0, 0, 0.42);
+}
+
+.lab-node.cycle-complete .node-level {
+  color: var(--green);
+}
+
+.lab-node.cycle-complete .node-level::after {
+  content: "DONE";
+  margin-left: 5px;
+  color: var(--green);
+}
+
 .lab-node.error {
   border-color: rgba(237, 95, 116, 0.8);
 }
@@ -627,9 +657,26 @@ button {
   border-radius: inherit;
   background: var(--node-color, var(--cyan));
   box-shadow: 0 0 12px var(--node-color, var(--cyan));
+  transition: width 120ms linear;
+}
+
+.upload-progress {
+  position: relative;
+  height: 8px;
+}
+
+.upload-progress::after {
+  content: attr(data-label);
+  position: absolute;
+  right: 0;
+  bottom: 10px;
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 9px;
 }
 
 .sort-viz {
+  position: relative;
   display: flex;
   align-items: flex-end;
   gap: 2px;
@@ -658,6 +705,76 @@ button {
 .sort-bar.sorted {
   background: var(--cyan);
   box-shadow: 0 0 10px rgba(35, 215, 192, 0.42);
+}
+
+.sort-viz.done,
+.graph-viz.done {
+  border-color: rgba(110, 225, 142, 0.58);
+  box-shadow: inset 0 0 0 1px rgba(110, 225, 142, 0.14), 0 0 18px rgba(110, 225, 142, 0.12);
+}
+
+.sort-viz.done::after,
+.graph-viz.done::after {
+  content: "DONE";
+  position: absolute;
+  right: 6px;
+  top: 5px;
+  padding: 2px 5px;
+  border: 1px solid rgba(110, 225, 142, 0.5);
+  border-radius: 4px;
+  background: rgba(15, 28, 24, 0.82);
+  color: var(--green);
+  font-family: var(--mono);
+  font-size: 9px;
+  font-weight: 800;
+}
+
+.graph-viz {
+  position: relative;
+  height: 52px;
+  overflow: hidden;
+  border: 1px solid rgba(151, 174, 207, 0.14);
+  border-radius: 5px;
+  background: rgba(6, 11, 20, 0.38);
+}
+
+.graph-viz svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.graph-edge {
+  stroke: rgba(151, 174, 207, 0.24);
+  stroke-width: 2;
+  stroke-linecap: round;
+  transition: stroke 120ms ease, stroke-width 120ms ease;
+}
+
+.graph-edge.visited {
+  stroke: rgba(35, 215, 192, 0.48);
+}
+
+.graph-edge.active {
+  stroke: var(--orange);
+  stroke-width: 3;
+}
+
+.graph-dot {
+  fill: rgba(32, 43, 61, 0.95);
+  stroke: rgba(151, 174, 207, 0.55);
+  stroke-width: 1.5;
+  transition: fill 120ms ease, stroke 120ms ease, r 120ms ease;
+}
+
+.graph-dot.visited {
+  fill: var(--cyan);
+  stroke: rgba(220, 234, 255, 0.86);
+}
+
+.graph-dot.active {
+  fill: var(--orange);
+  stroke: #fff1ce;
 }
 
 .node-port {
@@ -806,13 +923,16 @@ button {
 }
 
 .bottom-console {
-  position: relative;
+  position: absolute;
   z-index: 24;
+  right: calc(var(--shell-pad) + var(--mission-footer-offset));
+  bottom: var(--shell-pad);
+  left: calc(var(--shell-pad) + var(--library-footer-offset));
   display: grid;
-  grid-template-columns: minmax(360px, 520px) auto 1fr;
+  grid-template-columns: minmax(0, 520px) auto minmax(0, 1fr);
   align-items: end;
   gap: 16px;
-  padding: 0 16px 16px;
+  padding: 0;
   pointer-events: none;
 }
 
@@ -821,6 +941,7 @@ button {
 }
 
 .selection-panel {
+  min-width: 0;
   min-height: 92px;
   padding: 12px;
 }
@@ -1039,11 +1160,15 @@ button {
 
 @media (max-width: 1180px) {
   .app-shell {
+    --library-width: 220px;
+    --mission-width: 0px;
+    --library-footer-offset: calc(var(--library-width) + var(--workspace-gap));
+    --mission-footer-offset: 0px;
     min-width: 760px;
   }
 
   .workspace {
-    grid-template-columns: 220px minmax(380px, 1fr);
+    grid-template-columns: var(--library-width) minmax(380px, 1fr);
   }
 
   .mission-panel {

@@ -20,6 +20,10 @@ const colors = {
 };
 
 const SORT_KEYS = new Set(["BubbleSort", "SelectionSort", "InsertionSort", "MergeSort", "QuickSort", "HeapSort"]);
+const TRAVERSAL_KEYS = new Set(["BFS", "DFS"]);
+const PROCESS_RELEASE_MS = 360;
+const COMPLETION_FLASH_MS = 900;
+const UPLOAD_UNITS_PER_RATE = 5;
 
 const nodeDefs = {
   RawInput: {
@@ -576,7 +580,7 @@ function defaultDropPoint(key) {
   const compact = rect.width < 780;
   const colWidth = 230;
   const rowHeight = 166;
-  const nodeHeight = SORT_KEYS.has(key) ? 186 : 150;
+  const nodeHeight = visualNodeHeight(key);
   const maxY = Math.max(72, rect.height - nodeHeight - 70);
   const xs = compact
     ? [335, 105, 450].filter((x) => x <= rect.width - 210)
@@ -602,7 +606,7 @@ function defaultDropPoint(key) {
 function isOpenSpot(x, y, height) {
   const candidate = { x, y, width: 204, height };
   return [...state.nodes.values()].every((node) => {
-    const nodeHeight = node.sort ? 186 : 150;
+    const nodeHeight = visualNodeHeight(node.key);
     const existing = { x: node.x, y: node.y, width: 204, height: nodeHeight };
     return (
       candidate.x + candidate.width < existing.x ||
@@ -611,6 +615,10 @@ function isOpenSpot(x, y, height) {
       existing.y + existing.height < candidate.y
     );
   });
+}
+
+function visualNodeHeight(key) {
+  return SORT_KEYS.has(key) || TRAVERSAL_KEYS.has(key) ? 190 : 150;
 }
 
 function handlePaletteDrop(event) {
@@ -634,10 +642,15 @@ function addNode(key, x, y, options = {}) {
     x,
     y,
     level: 1,
-    progress: Math.round(18 + Math.random() * 34),
+    progress: 0,
     status: "idle",
     stats: { rate: def.baseRate, operations: 0, memory: 0, time: 0 },
-    sort: SORT_KEYS.has(key) ? createSortState() : null,
+    outputVersion: key === "RawInput" ? 1 : 0,
+    outputAmount: defaultOutputAmount(def),
+    completedPulseUntil: 0,
+    sort: SORT_KEYS.has(key) ? createSortState(key) : null,
+    traversal: TRAVERSAL_KEYS.has(key) ? createTraversalState(key) : null,
+    upload: def.kind === "output" ? createUploadState() : null,
     el: null,
   };
 
@@ -645,6 +658,7 @@ function addNode(key, x, y, options = {}) {
   state.nodes.set(id, node);
   els.canvas.appendChild(node.el);
   if (node.sort) refreshSortViz(node);
+  if (node.traversal) refreshTraversalViz(node);
   selectNode(id);
   updateAll();
   unlockAchievementIfNeeded();
@@ -674,6 +688,13 @@ function renderNode(node) {
     `;
   }).join("");
   const sortViz = node.sort ? `<div class="sort-viz" aria-label="정렬 시각화"></div>` : "";
+  const traversalViz = node.traversal ? `<div class="graph-viz" aria-label="탐색 시각화"></div>` : "";
+
+  const progressBar = isProcessingNode(node) ? "" : `
+      <div class="progress ${node.upload ? "upload-progress" : ""}">
+        <span style="--progress:${node.progress}%"></span>
+      </div>
+    `;
 
   el.innerHTML = `
     ${inputPort}${outputPort}${hwPort}
@@ -688,7 +709,8 @@ function renderNode(node) {
     <section class="node-body">
       ${rows}
       ${sortViz}
-      <div class="progress"><span style="--progress:${node.progress}%"></span></div>
+      ${traversalViz}
+      ${progressBar}
     </section>
   `;
 
@@ -708,10 +730,33 @@ function rowColor(index, def) {
   return colors.orange;
 }
 
+function createUploadState() {
+  return {
+    sourceId: null,
+    version: 0,
+    amount: 0,
+    uploaded: 0,
+    complete: false,
+  };
+}
+
+function defaultOutputAmount(def) {
+  if (def.output === "int[]") return 22;
+  if (def.output === "graph" || def.output === "tree") return traversalGraph.nodes.length;
+  if (def.output === "string") return 18;
+  if (def.output === "raw") return 16;
+  return 12;
+}
+
+function isCompletionPulseActive(node) {
+  return Boolean(node.completedPulseUntil && performance.now() < node.completedPulseUntil);
+}
+
 function refreshNode(node) {
   const classNames = ["lab-node", node.status];
   if (state.selected === node.id) classNames.push("selected");
   if (state.connecting?.nodeId === node.id) classNames.push("connecting-source");
+  if (isCompletionPulseActive(node)) classNames.push("cycle-complete");
   node.el.className = classNames.filter(Boolean).join(" ");
   node.el.style.left = `${node.x}px`;
   node.el.style.top = `${node.y}px`;
@@ -719,11 +764,25 @@ function refreshNode(node) {
 
   const rows = node.el.querySelectorAll(".node-row strong");
   if (rows[0]) rows[0].textContent = `${node.stats.rate.toFixed(1)}/s`;
-  const bar = node.el.querySelector(".progress span");
-  if (bar) bar.style.setProperty("--progress", `${node.progress}%`);
+  refreshNodeProgress(node);
   const level = node.el.querySelector(".node-level");
   if (level) level.textContent = `L${node.level}`;
   if (node.sort) refreshSortViz(node);
+  if (node.traversal) refreshTraversalViz(node);
+}
+
+function refreshNodeProgress(node) {
+  const track = node.el.querySelector(".progress");
+  const bar = track?.querySelector("span");
+  if (!bar) return;
+  const progress = clamp(node.progress, 0, 100);
+  bar.style.setProperty("--progress", `${progress}%`);
+  if (node.upload) {
+    const uploaded = Math.min(node.upload.amount, node.upload.uploaded);
+    track.dataset.label = node.upload.amount
+      ? `${Math.floor(uploaded)}/${Math.round(node.upload.amount)}`
+      : "";
+  }
 }
 
 function handleNodePointerDown(event, id) {
@@ -753,7 +812,7 @@ function handlePointerMove(event) {
   if (!state.dragMoved) return;
 
   node.x = clamp(state.pointer.x - state.dragOffset.x, 12, els.canvasWrap.clientWidth - 210);
-  node.y = clamp(state.pointer.y - state.dragOffset.y, 12, els.canvasWrap.clientHeight - 170);
+  node.y = clamp(state.pointer.y - state.dragOffset.y, 12, els.canvasWrap.clientHeight - visualNodeHeight(node.key) - 20);
   refreshNode(node);
   renderConnections();
 }
@@ -1032,7 +1091,6 @@ function upgradeNode(id) {
   state.funds -= cost;
   node.level += 1;
   node.stats.rate = node.def.baseRate * (1 + (node.level - 1) * 0.32);
-  node.progress = Math.min(96, node.progress + 12);
   refreshNode(node);
   renderInspector(node);
   updateAll();
@@ -1095,20 +1153,30 @@ function simTick() {
   const outputNodes = [...reachable]
     .map((id) => state.nodes.get(id))
     .filter((node) => node?.def.kind === "output");
-  const hasEarningOutput = outputNodes.length > 0;
-  state.incomeRate = hasEarningOutput ? outputNodes.reduce((sum, node) => sum + node.stats.rate, 0) * 140 : 0;
+  const earningOutputs = outputNodes.filter((node) => node.upload?.amount > 0);
+  const hasEarningOutput = earningOutputs.length > 0;
+  state.incomeRate = hasEarningOutput ? earningOutputs.reduce((sum, node) => sum + node.stats.rate, 0) * 140 : 0;
   state.funds += state.incomeRate;
 
   state.nodes.forEach((node) => {
-    if (reachable.has(node.id)) node.status = active ? "running" : "idle";
-    else node.status = "idle";
-    if (node.id === "n1") node.status = "running";
-    if (active) node.progress = 24 + ((node.progress + Math.round(node.stats.rate * 9)) % 72);
+    if (reachable.has(node.id) && active) {
+      if (isProcessingNode(node)) {
+        node.status = isCurrentCycleDone(node) ? "done" : "running";
+      } else if (node.upload) {
+        node.status = node.upload.complete ? "done" : "running";
+      } else {
+        node.status = "running";
+      }
+    } else {
+      node.status = "idle";
+    }
     refreshNode(node);
   });
 
   if (!active) setStatus("노드를 클릭해 연결을 시작하세요.", "ok");
-  else if (!hasEarningOutput) setStatus("업로더까지 연결하면 자금을 벌 수 있습니다.", "warn");
+  else if (!hasEarningOutput) {
+    setStatus(outputNodes.length ? "처리 완료 데이터를 기다리고 있습니다." : "업로더까지 연결하면 자금을 벌 수 있습니다.", "warn");
+  }
   else {
     unlockAchievement("hello");
     setStatus("업로더가 자금을 벌고 있습니다.", "ok");
@@ -1144,7 +1212,7 @@ function getReachableNodeIds() {
     changed = false;
     state.connections.forEach((conn) => {
       if (!conn.valid || conn.isHardware) return;
-      if (reachable.has(conn.fromId) && !reachable.has(conn.toId)) {
+      if (canTransmitConnection(conn, reachable) && !reachable.has(conn.toId)) {
         reachable.add(conn.toId);
         changed = true;
       }
@@ -1154,6 +1222,25 @@ function getReachableNodeIds() {
     if (conn.valid && conn.isHardware && reachable.has(conn.toId)) reachable.add(conn.fromId);
   });
   return reachable;
+}
+
+function canTransmitConnection(conn, reachable = getReachableNodeIds()) {
+  if (!conn.valid || conn.isHardware || !reachable.has(conn.fromId)) return false;
+  const fromNode = state.nodes.get(conn.fromId);
+  return Boolean(fromNode && isNodeOutputReady(fromNode));
+}
+
+function isProcessingNode(node) {
+  return Boolean(node.sort || node.traversal);
+}
+
+function isCurrentCycleDone(node) {
+  return Boolean(node.sort?.done || node.traversal?.done);
+}
+
+function isNodeOutputReady(node) {
+  if (isProcessingNode(node)) return node.outputVersion > 0;
+  return true;
 }
 
 function calculateNetworkStats(reachable) {
@@ -1178,7 +1265,8 @@ function hardwareBoost(nodeId) {
   if (!hwConnections.length) return 1;
   return hwConnections.reduce((boost, conn) => {
     const hw = state.nodes.get(conn.fromId);
-    return boost + (hw ? hw.def.baseRate * 0.26 : 0);
+    const levelBoost = hw ? 1 + (hw.level - 1) * 0.18 : 1;
+    return boost * (hw ? hw.def.baseRate * levelBoost : 1);
   }, 1);
 }
 
@@ -1247,10 +1335,22 @@ function renderAchievements() {
   });
 }
 
-function createSortState() {
-  const values = Array.from({ length: 22 }, (_, index) => index + 1);
-  shuffle(values);
-  return { values, i: 0, j: 0, elapsed: 0, hold: 0, done: false, highlight: [] };
+function createSortState(key) {
+  const source = Array.from({ length: 22 }, (_, index) => index + 1);
+  shuffle(source);
+  const frames = buildSortFrames(key, source);
+  const first = frames[0] || makeSortFrame(source);
+  return {
+    key,
+    values: first.values.slice(),
+    frames,
+    frameIndex: 0,
+    elapsed: 0,
+    hold: 0,
+    done: false,
+    highlight: first.highlight.slice(),
+    sorted: first.sorted.slice(),
+  };
 }
 
 function shuffle(values) {
@@ -1260,13 +1360,232 @@ function shuffle(values) {
   }
 }
 
+function buildSortFrames(key, initialValues) {
+  const builders = {
+    BubbleSort: buildBubbleSortFrames,
+    SelectionSort: buildSelectionSortFrames,
+    InsertionSort: buildInsertionSortFrames,
+    MergeSort: buildMergeSortFrames,
+    QuickSort: buildQuickSortFrames,
+    HeapSort: buildHeapSortFrames,
+  };
+  return (builders[key] || buildBubbleSortFrames)(initialValues);
+}
+
+function makeSortFrame(values, highlight = [], sorted = []) {
+  return {
+    values: values.slice(),
+    highlight: uniqueIndexes(highlight, values.length),
+    sorted: uniqueIndexes(sorted, values.length),
+  };
+}
+
+function uniqueIndexes(indexes, length) {
+  return [...new Set(indexes)].filter((index) => Number.isInteger(index) && index >= 0 && index < length);
+}
+
+function indexRange(start, end) {
+  const indexes = [];
+  for (let index = Math.max(0, start); index < end; index += 1) indexes.push(index);
+  return indexes;
+}
+
+function pushSortFrame(frames, values, highlight = [], sorted = []) {
+  frames.push(makeSortFrame(values, highlight, sorted));
+}
+
+function buildBubbleSortFrames(initialValues) {
+  const values = initialValues.slice();
+  const frames = [makeSortFrame(values)];
+  const length = values.length;
+  for (let pass = 0; pass < length - 1; pass += 1) {
+    for (let index = 0; index < length - pass - 1; index += 1) {
+      if (values[index] > values[index + 1]) {
+        [values[index], values[index + 1]] = [values[index + 1], values[index]];
+      }
+      pushSortFrame(frames, values, [index, index + 1], indexRange(length - pass, length));
+    }
+    pushSortFrame(frames, values, [], indexRange(length - pass - 1, length));
+  }
+  pushSortFrame(frames, values, [], indexRange(0, length));
+  return frames;
+}
+
+function buildSelectionSortFrames(initialValues) {
+  const values = initialValues.slice();
+  const frames = [makeSortFrame(values)];
+  const length = values.length;
+  for (let index = 0; index < length - 1; index += 1) {
+    let minIndex = index;
+    for (let scan = index + 1; scan < length; scan += 1) {
+      pushSortFrame(frames, values, [minIndex, scan], indexRange(0, index));
+      if (values[scan] < values[minIndex]) {
+        minIndex = scan;
+        pushSortFrame(frames, values, [index, minIndex], indexRange(0, index));
+      }
+    }
+    if (minIndex !== index) {
+      [values[index], values[minIndex]] = [values[minIndex], values[index]];
+    }
+    pushSortFrame(frames, values, [index, minIndex], indexRange(0, index + 1));
+  }
+  pushSortFrame(frames, values, [], indexRange(0, length));
+  return frames;
+}
+
+function buildInsertionSortFrames(initialValues) {
+  const values = initialValues.slice();
+  const frames = [makeSortFrame(values)];
+  const length = values.length;
+  for (let index = 1; index < length; index += 1) {
+    let scan = index;
+    pushSortFrame(frames, values, [scan], indexRange(0, index));
+    while (scan > 0 && values[scan - 1] > values[scan]) {
+      pushSortFrame(frames, values, [scan - 1, scan], indexRange(0, index));
+      [values[scan - 1], values[scan]] = [values[scan], values[scan - 1]];
+      scan -= 1;
+      pushSortFrame(frames, values, [scan, scan + 1], indexRange(0, index));
+    }
+    pushSortFrame(frames, values, [scan], indexRange(0, index + 1));
+  }
+  pushSortFrame(frames, values, [], indexRange(0, length));
+  return frames;
+}
+
+function buildMergeSortFrames(initialValues) {
+  const values = initialValues.slice();
+  const frames = [makeSortFrame(values)];
+  const length = values.length;
+
+  function mergeSort(left, right) {
+    if (right - left <= 1) return;
+    const middle = Math.floor((left + right) / 2);
+    mergeSort(left, middle);
+    mergeSort(middle, right);
+
+    const merged = [];
+    let leftIndex = left;
+    let rightIndex = middle;
+    while (leftIndex < middle || rightIndex < right) {
+      if (rightIndex >= right || (leftIndex < middle && values[leftIndex] <= values[rightIndex])) {
+        merged.push(values[leftIndex]);
+        leftIndex += 1;
+      } else {
+        merged.push(values[rightIndex]);
+        rightIndex += 1;
+      }
+    }
+
+    for (let offset = 0; offset < merged.length; offset += 1) {
+      values[left + offset] = merged[offset];
+      const sorted = right - left === length ? indexRange(left, left + offset + 1) : [];
+      pushSortFrame(frames, values, [left + offset], sorted);
+    }
+  }
+
+  mergeSort(0, length);
+  pushSortFrame(frames, values, [], indexRange(0, length));
+  return frames;
+}
+
+function buildQuickSortFrames(initialValues) {
+  const values = initialValues.slice();
+  const frames = [makeSortFrame(values)];
+  const sorted = new Set();
+  const length = values.length;
+
+  function quickSort(left, right) {
+    if (left > right) return;
+    if (left === right) {
+      sorted.add(left);
+      pushSortFrame(frames, values, [left], [...sorted]);
+      return;
+    }
+
+    const pivotIndex = right;
+    const pivot = values[pivotIndex];
+    let storeIndex = left;
+    for (let scan = left; scan < right; scan += 1) {
+      pushSortFrame(frames, values, [scan, pivotIndex], [...sorted]);
+      if (values[scan] < pivot) {
+        [values[storeIndex], values[scan]] = [values[scan], values[storeIndex]];
+        pushSortFrame(frames, values, [storeIndex, scan], [...sorted]);
+        storeIndex += 1;
+      }
+    }
+    [values[storeIndex], values[pivotIndex]] = [values[pivotIndex], values[storeIndex]];
+    sorted.add(storeIndex);
+    pushSortFrame(frames, values, [storeIndex], [...sorted]);
+
+    quickSort(left, storeIndex - 1);
+    quickSort(storeIndex + 1, right);
+  }
+
+  quickSort(0, length - 1);
+  pushSortFrame(frames, values, [], indexRange(0, length));
+  return frames;
+}
+
+function buildHeapSortFrames(initialValues) {
+  const values = initialValues.slice();
+  const frames = [makeSortFrame(values)];
+  const length = values.length;
+
+  function heapify(size, root) {
+    let parent = root;
+    while (true) {
+      let largest = parent;
+      const left = parent * 2 + 1;
+      const right = left + 1;
+      if (left < size) {
+        pushSortFrame(frames, values, [parent, left], indexRange(size, length));
+        if (values[left] > values[largest]) largest = left;
+      }
+      if (right < size) {
+        pushSortFrame(frames, values, [largest, right], indexRange(size, length));
+        if (values[right] > values[largest]) largest = right;
+      }
+      if (largest === parent) break;
+      [values[parent], values[largest]] = [values[largest], values[parent]];
+      pushSortFrame(frames, values, [parent, largest], indexRange(size, length));
+      parent = largest;
+    }
+  }
+
+  for (let root = Math.floor(length / 2) - 1; root >= 0; root -= 1) heapify(length, root);
+  for (let end = length - 1; end > 0; end -= 1) {
+    [values[0], values[end]] = [values[end], values[0]];
+    pushSortFrame(frames, values, [0, end], indexRange(end, length));
+    heapify(end, 0);
+  }
+  pushSortFrame(frames, values, [], indexRange(0, length));
+  return frames;
+}
+
 function advanceSortVisuals(dt) {
   const reachable = getReachableNodeIds();
   state.nodes.forEach((node) => {
-    if (!node.sort || !reachable.has(node.id)) return;
+    if (!node.sort) return;
+    if (!reachable.has(node.id)) {
+      node.sort.elapsed = 0;
+      refreshSortViz(node);
+      return;
+    }
+
+    if (node.sort.done) {
+      node.sort.hold += dt;
+      if (node.sort.hold >= PROCESS_RELEASE_MS) {
+        node.sort = createSortState(node.key);
+        node.status = "running";
+        refreshNode(node);
+      }
+      refreshSortViz(node);
+      return;
+    }
+
     node.sort.elapsed += dt;
-    const interval = Math.max(28, 120 / Math.max(0.8, node.stats.rate));
-    while (node.sort.elapsed >= interval) {
+    const interval = Math.max(5, 42 / Math.max(0.8, node.stats.rate));
+    while (node.sort.elapsed >= interval && !node.sort.done) {
       node.sort.elapsed -= interval;
       sortStep(node);
     }
@@ -1276,47 +1595,315 @@ function advanceSortVisuals(dt) {
 
 function sortStep(node) {
   const sort = node.sort;
-  const values = sort.values;
-  if (sort.done) {
-    sort.hold += 1;
-    if (sort.hold > 26) {
-      shuffle(values);
-      sort.i = 0;
-      sort.j = 0;
-      sort.hold = 0;
-      sort.done = false;
-      sort.highlight = [];
-    }
-    return;
+  if (!sort || sort.done) return;
+  sort.frameIndex = Math.min(sort.frameIndex + 1, sort.frames.length - 1);
+  applySortFrame(sort);
+  if (sort.frameIndex >= sort.frames.length - 1) {
+    completeProcessingCycle(node);
   }
+}
 
-  const last = values.length - sort.i - 1;
-  if (sort.j < last) {
-    sort.highlight = [sort.j, sort.j + 1];
-    if (values[sort.j] > values[sort.j + 1]) {
-      [values[sort.j], values[sort.j + 1]] = [values[sort.j + 1], values[sort.j]];
-    }
-    sort.j += 1;
-  } else {
-    sort.j = 0;
-    sort.i += 1;
-    sort.highlight = [];
-    if (sort.i >= values.length - 1) {
-      sort.done = true;
-      sort.hold = 0;
-    }
+function completeProcessingCycle(node) {
+  if (node.sort?.done || node.traversal?.done) return;
+  if (node.sort) {
+    node.sort.done = true;
+    node.sort.hold = 0;
+    node.sort.sorted = indexRange(0, node.sort.values.length);
+    node.outputAmount = node.sort.values.length;
+  } else if (node.traversal) {
+    node.traversal.done = true;
+    node.traversal.hold = 0;
+    node.traversal.visited = traversalGraph.nodes.map((point) => point.id);
+    node.traversal.active = null;
+    node.traversal.edge = null;
+    node.outputAmount = node.traversal.visited.length;
   }
+  node.outputVersion += 1;
+  node.completedPulseUntil = performance.now() + COMPLETION_FLASH_MS;
+  refreshNode(node);
+  simTick();
+}
+
+function applySortFrame(sort) {
+  const frame = sort.frames[sort.frameIndex] || sort.frames[sort.frames.length - 1];
+  sort.values = frame.values.slice();
+  sort.highlight = frame.highlight.slice();
+  sort.sorted = frame.sorted.slice();
 }
 
 function refreshSortViz(node) {
   const container = node.el.querySelector(".sort-viz");
   if (!container || !node.sort) return;
+  container.classList.toggle("done", node.sort.done);
   const max = node.sort.values.length;
   container.innerHTML = node.sort.values.map((value, index) => {
     const active = node.sort.highlight.includes(index);
-    const sorted = node.sort.done || index >= max - node.sort.i;
+    const sorted = node.sort.done || node.sort.sorted.includes(index);
     return `<span class="sort-bar ${active ? "active" : ""} ${sorted ? "sorted" : ""}" style="height:${10 + (value / max) * 30}px"></span>`;
   }).join("");
+}
+
+const traversalGraph = {
+  nodes: [
+    { id: 0, x: 18, y: 27 },
+    { id: 1, x: 50, y: 12 },
+    { id: 2, x: 50, y: 42 },
+    { id: 3, x: 86, y: 9 },
+    { id: 4, x: 86, y: 30 },
+    { id: 5, x: 86, y: 51 },
+    { id: 6, x: 124, y: 18 },
+    { id: 7, x: 124, y: 44 },
+  ],
+  edges: [
+    [0, 1],
+    [0, 2],
+    [1, 3],
+    [1, 4],
+    [2, 4],
+    [2, 5],
+    [3, 6],
+    [4, 6],
+    [5, 7],
+    [6, 7],
+  ],
+};
+
+function createTraversalState(key) {
+  return {
+    key,
+    steps: key === "DFS" ? buildDfsSteps() : buildBfsSteps(),
+    index: 0,
+    elapsed: 0,
+    hold: 0,
+    done: false,
+    visited: [],
+    active: null,
+    edge: null,
+  };
+}
+
+function traversalAdjacency() {
+  return traversalGraph.nodes.reduce((adjacency, node) => {
+    adjacency[node.id] = [];
+    return adjacency;
+  }, {});
+}
+
+function buildBfsSteps() {
+  const adjacency = traversalAdjacency();
+  traversalGraph.edges.forEach(([from, to]) => adjacency[from].push(to));
+  const seen = new Set([0]);
+  const queue = [{ node: 0, from: null }];
+  const steps = [];
+
+  while (queue.length) {
+    const current = queue.shift();
+    steps.push(current);
+    adjacency[current.node].forEach((next) => {
+      if (seen.has(next)) return;
+      seen.add(next);
+      queue.push({ node: next, from: current.node });
+    });
+  }
+  return steps;
+}
+
+function buildDfsSteps() {
+  const adjacency = traversalAdjacency();
+  traversalGraph.edges.forEach(([from, to]) => adjacency[from].push(to));
+  const seen = new Set();
+  const steps = [];
+
+  function visit(node, from) {
+    if (seen.has(node)) return;
+    seen.add(node);
+    steps.push({ node, from });
+    adjacency[node].forEach((next) => visit(next, node));
+  }
+
+  visit(0, null);
+  return steps;
+}
+
+function advanceTraversalVisuals(dt) {
+  const reachable = getReachableNodeIds();
+  state.nodes.forEach((node) => {
+    if (!node.traversal) return;
+    if (!reachable.has(node.id)) {
+      node.traversal.elapsed = 0;
+      refreshTraversalViz(node);
+      return;
+    }
+
+    if (node.traversal.done) {
+      node.traversal.hold += dt;
+      if (node.traversal.hold >= PROCESS_RELEASE_MS) {
+        node.traversal = createTraversalState(node.key);
+        node.status = "running";
+        refreshNode(node);
+      }
+      refreshTraversalViz(node);
+      return;
+    }
+
+    node.traversal.elapsed += dt;
+    const interval = Math.max(35, 360 / Math.max(0.8, node.stats.rate));
+    while (node.traversal.elapsed >= interval && !node.traversal.done) {
+      node.traversal.elapsed -= interval;
+      traversalStep(node);
+    }
+    refreshTraversalViz(node);
+  });
+}
+
+function traversalStep(node) {
+  const traversal = node.traversal;
+  if (!traversal || traversal.done) return;
+  const step = traversal.steps[traversal.index];
+  if (!step) {
+    completeProcessingCycle(node);
+    return;
+  }
+
+  traversal.active = step.node;
+  traversal.edge = step.from === null ? null : [step.from, step.node];
+  if (!traversal.visited.includes(step.node)) traversal.visited.push(step.node);
+  traversal.index += 1;
+  if (traversal.index >= traversal.steps.length) {
+    completeProcessingCycle(node);
+  }
+}
+
+function refreshTraversalViz(node) {
+  const container = node.el.querySelector(".graph-viz");
+  if (!container || !node.traversal) return;
+  container.classList.toggle("done", node.traversal.done);
+  const visited = new Set(node.traversal.visited);
+  const activeEdge = node.traversal.edge ? node.traversal.edge.join("-") : "";
+  const points = new Map(traversalGraph.nodes.map((point) => [point.id, point]));
+  const edges = traversalGraph.edges.map(([from, to]) => {
+    const start = points.get(from);
+    const end = points.get(to);
+    const edgeKey = `${from}-${to}`;
+    const classes = ["graph-edge"];
+    if (node.traversal.done || (visited.has(from) && visited.has(to))) classes.push("visited");
+    if (edgeKey === activeEdge) classes.push("active");
+    return `<line class="${classes.join(" ")}" x1="${start.x}" y1="${start.y}" x2="${end.x}" y2="${end.y}"></line>`;
+  }).join("");
+  const nodes = traversalGraph.nodes.map((point) => {
+    const classes = ["graph-dot"];
+    if (node.traversal.done || visited.has(point.id)) classes.push("visited");
+    if (point.id === node.traversal.active) classes.push("active");
+    return `<circle class="${classes.join(" ")}" cx="${point.x}" cy="${point.y}" r="4.6"></circle>`;
+  }).join("");
+
+  container.innerHTML = `<svg viewBox="0 0 142 60" aria-hidden="true">${edges}${nodes}</svg>`;
+}
+
+function advanceNodeProgress(dt) {
+  const reachable = getReachableNodeIds();
+  const active = reachable.size > 1;
+  state.nodes.forEach((node) => {
+    const running = active && reachable.has(node.id);
+    if (node.sort) {
+      node.progress = 0;
+    } else if (node.traversal) {
+      node.progress = 0;
+    } else if (node.upload) {
+      advanceUploadProgress(node, dt, reachable, running);
+    } else if (running) {
+      const increment = dt * Math.max(0.018, node.stats.rate * 0.026);
+      node.progress = (node.progress + increment) % 100;
+    } else {
+      node.progress = approach(node.progress, 0, dt * 0.08);
+    }
+    refreshNodeProgress(node);
+  });
+}
+
+function advanceUploadProgress(node, dt, reachable, running) {
+  const signal = running ? incomingDataSignal(node, reachable) : null;
+  if (!signal?.ready) {
+    node.upload.sourceId = null;
+    node.upload.version = 0;
+    node.upload.amount = 0;
+    node.upload.uploaded = approach(node.upload.uploaded, 0, dt * 0.012);
+    node.upload.complete = false;
+    node.progress = approach(node.progress, 0, dt * 0.08);
+    return;
+  }
+
+  const hasNewBatch = node.upload.sourceId !== signal.sourceId || node.upload.version !== signal.version;
+  if (hasNewBatch && (node.upload.complete || node.upload.amount === 0)) {
+    node.upload.sourceId = signal.sourceId;
+    node.upload.version = signal.version;
+    node.upload.amount = signal.amount;
+    node.upload.uploaded = 0;
+    node.upload.complete = false;
+  }
+
+  if (!node.upload.complete) {
+    node.upload.uploaded = Math.min(
+      node.upload.amount,
+      node.upload.uploaded + (dt / 1000) * node.stats.rate * UPLOAD_UNITS_PER_RATE,
+    );
+    if (node.upload.uploaded >= node.upload.amount) {
+      node.upload.complete = true;
+      node.outputVersion += 1;
+      node.completedPulseUntil = performance.now() + COMPLETION_FLASH_MS;
+      simTick();
+    }
+  }
+
+  node.progress = node.upload.amount
+    ? (node.upload.uploaded / node.upload.amount) * 100
+    : 0;
+}
+
+function incomingDataSignal(node, reachable) {
+  const input = state.connections.find((conn) => (
+    conn.valid &&
+    !conn.isHardware &&
+    conn.toId === node.id &&
+    canTransmitConnection(conn, reachable)
+  ));
+  if (!input) return null;
+  const source = state.nodes.get(input.fromId);
+  const signal = outputSignal(source);
+  if (!signal.ready) return null;
+  return {
+    ...signal,
+    sourceId: input.fromId,
+  };
+}
+
+function outputSignal(node, visited = new Set()) {
+  if (!node || visited.has(node.id)) return { ready: false, version: 0, amount: 0 };
+  visited.add(node.id);
+  if (isProcessingNode(node)) {
+    return {
+      ready: node.outputVersion > 0,
+      version: node.outputVersion,
+      amount: Math.max(1, node.outputAmount),
+    };
+  }
+  if (node.def.kind === "router") {
+    const upstream = state.connections.find((conn) => conn.valid && !conn.isHardware && conn.toId === node.id);
+    const source = upstream ? state.nodes.get(upstream.fromId) : null;
+    const signal = outputSignal(source, visited);
+    return signal.ready ? signal : { ready: true, version: 1, amount: Math.max(1, node.outputAmount) };
+  }
+  return {
+    ready: true,
+    version: node.outputVersion || 1,
+    amount: Math.max(1, node.outputAmount || defaultOutputAmount(node.def)),
+  };
+}
+
+function approach(value, target, amount) {
+  if (value < target) return Math.min(target, value + amount);
+  if (value > target) return Math.max(target, value - amount);
+  return target;
 }
 
 function startAnimationLoop() {
@@ -1329,8 +1916,11 @@ function startAnimationLoop() {
     last = now;
     ctx.clearRect(0, 0, canvas.clientWidth, canvas.clientHeight);
     advanceSortVisuals(dt);
+    advanceTraversalVisuals(dt);
+    advanceNodeProgress(dt);
 
-    const validConnections = state.connections.filter((conn) => conn.valid);
+    const reachable = getReachableNodeIds();
+    const validConnections = state.connections.filter((conn) => canParticleUseConnection(conn, reachable));
     if (validConnections.length && Math.random() < 0.42) {
       const conn = validConnections[Math.floor(Math.random() * validConnections.length)];
       state.particles.push({
@@ -1344,6 +1934,7 @@ function startAnimationLoop() {
     state.particles = state.particles.filter((particle) => {
       const conn = state.connections.find((item) => item.id === particle.connId);
       if (!conn) return false;
+      if (!canParticleUseConnection(conn, reachable)) return false;
       const curve = getConnectionCurve(conn);
       if (!curve) return false;
       particle.t += dt * 0.0008;
@@ -1362,6 +1953,12 @@ function startAnimationLoop() {
   }
 
   state.animation = requestAnimationFrame(loop);
+}
+
+function canParticleUseConnection(conn, reachable = getReachableNodeIds()) {
+  if (!conn.valid) return false;
+  if (conn.isHardware) return reachable.has(conn.toId);
+  return canTransmitConnection(conn, reachable);
 }
 
 function resizeParticleCanvas() {
