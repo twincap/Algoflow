@@ -19,8 +19,17 @@ const colors = {
   ok: "#6ee18e",
 };
 
-const SORT_KEYS = new Set(["BubbleSort", "SelectionSort", "InsertionSort", "MergeSort", "QuickSort", "HeapSort"]);
-const TRAVERSAL_KEYS = new Set(["BFS", "DFS"]);
+const SORT_KEYS = new Set([
+  "BubbleSort",
+  "SelectionSort",
+  "InsertionSort",
+  "MergeSort",
+  "QuickSort",
+  "HeapSort",
+  "RadixSort",
+  "CountingSort",
+]);
+const TRAVERSAL_KEYS = new Set(["BFS", "DFS", "BSTSearch"]);
 const PROCESS_RELEASE_MS = 360;
 const COMPLETION_FLASH_MS = 900;
 const UPLOAD_UNITS_PER_RATE = 5;
@@ -242,6 +251,36 @@ const nodeDefs = {
     rows: ["O(n log n)", "힙 구성", "제자리"],
     baseRate: 2.4,
   },
+  RadixSort: {
+    key: "RadixSort",
+    category: "process",
+    label: "기수 정렬",
+    kind: "algorithm",
+    glyph: "RS",
+    color: "#9f9bff",
+    cost: 74,
+    input: true,
+    output: "int[]",
+    accepts: ["int[]"],
+    hwInput: true,
+    rows: ["O(d(n+k))", "자리수 버킷", "안정 정렬"],
+    baseRate: 3.3,
+  },
+  CountingSort: {
+    key: "CountingSort",
+    category: "process",
+    label: "계수 정렬",
+    kind: "algorithm",
+    glyph: "CS",
+    color: "#8fa4ff",
+    cost: 66,
+    input: true,
+    output: "int[]",
+    accepts: ["int[]"],
+    hwInput: true,
+    rows: ["O(n+k)", "빈도 카운트", "정수 범위"],
+    baseRate: 3.1,
+  },
   BFS: {
     key: "BFS",
     category: "process",
@@ -271,6 +310,21 @@ const nodeDefs = {
     hwInput: true,
     rows: ["O(V+E)", "스택", "깊게 탐색"],
     baseRate: 2,
+  },
+  BSTSearch: {
+    key: "BSTSearch",
+    category: "process",
+    label: "BST 탐색",
+    kind: "algorithm",
+    glyph: "BT",
+    color: "#ffad6b",
+    cost: 66,
+    input: true,
+    output: "tree",
+    accepts: ["tree"],
+    hwInput: true,
+    rows: ["O(log n)", "target = 60", "키 비교"],
+    baseRate: 2.6,
   },
   CPU: {
     key: "CPU",
@@ -742,6 +796,7 @@ function createUploadState() {
 
 function defaultOutputAmount(def) {
   if (def.output === "int[]") return 22;
+  if (def.key === "BSTSearch") return bstSearchGraph.nodes.length;
   if (def.output === "graph" || def.output === "tree") return traversalGraph.nodes.length;
   if (def.output === "string") return 18;
   if (def.output === "raw") return 16;
@@ -1368,6 +1423,8 @@ function buildSortFrames(key, initialValues) {
     MergeSort: buildMergeSortFrames,
     QuickSort: buildQuickSortFrames,
     HeapSort: buildHeapSortFrames,
+    RadixSort: buildRadixSortFrames,
+    CountingSort: buildCountingSortFrames,
   };
   return (builders[key] || buildBubbleSortFrames)(initialValues);
 }
@@ -1562,6 +1619,68 @@ function buildHeapSortFrames(initialValues) {
   return frames;
 }
 
+function buildRadixSortFrames(initialValues) {
+  const values = initialValues.slice();
+  const frames = [makeSortFrame(values)];
+  const length = values.length;
+  const max = Math.max(...values);
+
+  for (let exp = 1; Math.floor(max / exp) > 0; exp *= 10) {
+    const counts = Array(10).fill(0);
+    values.forEach((value, index) => {
+      counts[Math.floor(value / exp) % 10] += 1;
+      pushSortFrame(frames, values, [index]);
+    });
+
+    for (let index = 1; index < counts.length; index += 1) {
+      counts[index] += counts[index - 1];
+    }
+
+    const output = Array(length);
+    for (let index = length - 1; index >= 0; index -= 1) {
+      const digit = Math.floor(values[index] / exp) % 10;
+      counts[digit] -= 1;
+      output[counts[digit]] = values[index];
+      pushSortFrame(frames, values, [index]);
+    }
+
+    const isFinalPass = exp * 10 > max;
+    for (let index = 0; index < length; index += 1) {
+      values[index] = output[index];
+      pushSortFrame(frames, values, [index], isFinalPass ? indexRange(0, index + 1) : []);
+    }
+  }
+
+  pushSortFrame(frames, values, [], indexRange(0, length));
+  return frames;
+}
+
+function buildCountingSortFrames(initialValues) {
+  const values = initialValues.slice();
+  const frames = [makeSortFrame(values)];
+  const length = values.length;
+  const max = Math.max(...values);
+  const counts = Array(max + 1).fill(0);
+
+  values.forEach((value, index) => {
+    counts[value] += 1;
+    pushSortFrame(frames, values, [index]);
+  });
+
+  let writeIndex = 0;
+  for (let value = 0; value < counts.length; value += 1) {
+    while (counts[value] > 0) {
+      values[writeIndex] = value;
+      counts[value] -= 1;
+      pushSortFrame(frames, values, [writeIndex], indexRange(0, writeIndex + 1));
+      writeIndex += 1;
+    }
+  }
+
+  pushSortFrame(frames, values, [], indexRange(0, length));
+  return frames;
+}
+
 function advanceSortVisuals(dt) {
   const reachable = getReachableNodeIds();
   state.nodes.forEach((node) => {
@@ -1613,9 +1732,11 @@ function completeProcessingCycle(node) {
   } else if (node.traversal) {
     node.traversal.done = true;
     node.traversal.hold = 0;
-    node.traversal.visited = traversalGraph.nodes.map((point) => point.id);
-    node.traversal.active = null;
-    node.traversal.edge = null;
+    if (node.traversal.key !== "BSTSearch") {
+      node.traversal.visited = graphForTraversal(node.traversal.key).nodes.map((point) => point.id);
+      node.traversal.active = null;
+      node.traversal.edge = null;
+    }
     node.outputAmount = node.traversal.visited.length;
   }
   node.outputVersion += 1;
@@ -1668,10 +1789,35 @@ const traversalGraph = {
   ],
 };
 
+const bstSearchGraph = {
+  target: 60,
+  nodes: [
+    { id: 0, x: 71, y: 10, value: 50 },
+    { id: 1, x: 38, y: 30, value: 25 },
+    { id: 2, x: 104, y: 30, value: 75 },
+    { id: 3, x: 20, y: 50, value: 10 },
+    { id: 4, x: 56, y: 50, value: 35 },
+    { id: 5, x: 88, y: 50, value: 60 },
+    { id: 6, x: 122, y: 50, value: 90 },
+  ],
+  edges: [
+    [0, 1],
+    [0, 2],
+    [1, 3],
+    [1, 4],
+    [2, 5],
+    [2, 6],
+  ],
+};
+
+function graphForTraversal(key) {
+  return key === "BSTSearch" ? bstSearchGraph : traversalGraph;
+}
+
 function createTraversalState(key) {
   return {
     key,
-    steps: key === "DFS" ? buildDfsSteps() : buildBfsSteps(),
+    steps: buildTraversalSteps(key),
     index: 0,
     elapsed: 0,
     hold: 0,
@@ -1682,15 +1828,21 @@ function createTraversalState(key) {
   };
 }
 
-function traversalAdjacency() {
-  return traversalGraph.nodes.reduce((adjacency, node) => {
+function buildTraversalSteps(key) {
+  if (key === "DFS") return buildDfsSteps();
+  if (key === "BSTSearch") return buildBstSearchSteps();
+  return buildBfsSteps();
+}
+
+function traversalAdjacency(graph = traversalGraph) {
+  return graph.nodes.reduce((adjacency, node) => {
     adjacency[node.id] = [];
     return adjacency;
   }, {});
 }
 
 function buildBfsSteps() {
-  const adjacency = traversalAdjacency();
+  const adjacency = traversalAdjacency(traversalGraph);
   traversalGraph.edges.forEach(([from, to]) => adjacency[from].push(to));
   const seen = new Set([0]);
   const queue = [{ node: 0, from: null }];
@@ -1709,7 +1861,7 @@ function buildBfsSteps() {
 }
 
 function buildDfsSteps() {
-  const adjacency = traversalAdjacency();
+  const adjacency = traversalAdjacency(traversalGraph);
   traversalGraph.edges.forEach(([from, to]) => adjacency[from].push(to));
   const seen = new Set();
   const steps = [];
@@ -1722,6 +1874,30 @@ function buildDfsSteps() {
   }
 
   visit(0, null);
+  return steps;
+}
+
+function buildBstSearchSteps() {
+  const children = new Map();
+  bstSearchGraph.edges.forEach(([from, to]) => {
+    const parent = bstSearchGraph.nodes.find((node) => node.id === from);
+    const child = bstSearchGraph.nodes.find((node) => node.id === to);
+    if (!parent || !child) return;
+    const branch = child.value < parent.value ? "left" : "right";
+    children.set(from, { ...children.get(from), [branch]: to });
+  });
+
+  const values = new Map(bstSearchGraph.nodes.map((node) => [node.id, node.value]));
+  const steps = [];
+  let current = 0;
+  let from = null;
+  while (current !== undefined && current !== null) {
+    steps.push({ node: current, from });
+    const value = values.get(current);
+    if (value === bstSearchGraph.target) break;
+    from = current;
+    current = bstSearchGraph.target < value ? children.get(current)?.left : children.get(current)?.right;
+  }
   return steps;
 }
 
@@ -1778,26 +1954,32 @@ function refreshTraversalViz(node) {
   const container = node.el.querySelector(".graph-viz");
   if (!container || !node.traversal) return;
   container.classList.toggle("done", node.traversal.done);
+  const graph = graphForTraversal(node.traversal.key);
   const visited = new Set(node.traversal.visited);
   const activeEdge = node.traversal.edge ? node.traversal.edge.join("-") : "";
-  const points = new Map(traversalGraph.nodes.map((point) => [point.id, point]));
-  const edges = traversalGraph.edges.map(([from, to]) => {
+  const points = new Map(graph.nodes.map((point) => [point.id, point]));
+  const markAllVisited = node.traversal.done && node.traversal.key !== "BSTSearch";
+  const edges = graph.edges.map(([from, to]) => {
     const start = points.get(from);
     const end = points.get(to);
     const edgeKey = `${from}-${to}`;
     const classes = ["graph-edge"];
-    if (node.traversal.done || (visited.has(from) && visited.has(to))) classes.push("visited");
+    if (markAllVisited || (visited.has(from) && visited.has(to))) classes.push("visited");
     if (edgeKey === activeEdge) classes.push("active");
     return `<line class="${classes.join(" ")}" x1="${start.x}" y1="${start.y}" x2="${end.x}" y2="${end.y}"></line>`;
   }).join("");
-  const nodes = traversalGraph.nodes.map((point) => {
+  const labels = graph.nodes.map((point) => {
+    if (point.value === undefined) return "";
+    return `<text class="graph-label" x="${point.x}" y="${point.y + 2.4}">${point.value}</text>`;
+  }).join("");
+  const nodes = graph.nodes.map((point) => {
     const classes = ["graph-dot"];
-    if (node.traversal.done || visited.has(point.id)) classes.push("visited");
+    if (markAllVisited || visited.has(point.id)) classes.push("visited");
     if (point.id === node.traversal.active) classes.push("active");
     return `<circle class="${classes.join(" ")}" cx="${point.x}" cy="${point.y}" r="4.6"></circle>`;
   }).join("");
 
-  container.innerHTML = `<svg viewBox="0 0 142 60" aria-hidden="true">${edges}${nodes}</svg>`;
+  container.innerHTML = `<svg viewBox="0 0 142 60" aria-hidden="true">${edges}${nodes}${labels}</svg>`;
 }
 
 function advanceNodeProgress(dt) {
