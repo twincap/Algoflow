@@ -408,6 +408,11 @@ button {
   cursor: grabbing;
 }
 
+.palette-item:disabled {
+  cursor: not-allowed;
+  opacity: 0.42;
+}
+
 .palette-dot {
   width: 9px;
   height: 9px;
@@ -643,6 +648,76 @@ button {
   font-weight: 700;
 }
 
+.node-flow {
+  overflow: hidden;
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 9px;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.node-flow.loaded {
+  color: var(--yellow);
+}
+
+.node-output-card {
+  position: relative;
+  display: grid;
+  grid-template-columns: 24px 1fr;
+  align-items: center;
+  gap: 8px;
+  min-height: 42px;
+  padding: 7px 14px 7px 7px;
+  border: 1px solid color-mix(in srgb, var(--artifact-color, var(--cyan)) 42%, rgba(151, 174, 207, 0.18));
+  border-radius: 5px;
+  background: rgba(9, 16, 28, 0.62);
+  box-shadow: inset 0 0 0 1px rgba(220, 234, 255, 0.03);
+}
+
+.node-output-card.pending {
+  opacity: 0.68;
+}
+
+.output-icon {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border: 1px solid color-mix(in srgb, var(--artifact-color, var(--cyan)) 70%, transparent);
+  border-radius: 4px;
+  color: var(--artifact-color, var(--cyan));
+  font-family: var(--mono);
+  font-size: 9px;
+  font-weight: 800;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.output-copy {
+  min-width: 0;
+}
+
+.output-copy strong,
+.output-copy span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.output-copy strong {
+  color: var(--text);
+  font-size: 11px;
+  line-height: 1.2;
+}
+
+.output-copy span {
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 9px;
+}
+
 .progress {
   height: 5px;
   overflow: hidden;
@@ -658,6 +733,10 @@ button {
   background: var(--node-color, var(--cyan));
   box-shadow: 0 0 12px var(--node-color, var(--cyan));
   transition: width 120ms linear;
+}
+
+.progress.instant-reset span {
+  transition-duration: 0ms;
 }
 
 .upload-progress {
@@ -691,10 +770,41 @@ button {
 .sort-bar {
   flex: 1 1 0;
   min-width: 2px;
+  position: relative;
   border-radius: 2px 2px 0 0;
   background: rgba(169, 133, 255, 0.62);
   box-shadow: 0 0 8px rgba(169, 133, 255, 0.24);
   transition: height 80ms linear, background 80ms linear;
+}
+
+.sort-viz.string-mode {
+  gap: 3px;
+}
+
+.sort-viz.dense {
+  gap: 1px;
+  padding-inline: 5px;
+}
+
+.sort-viz.dense .sort-bar {
+  min-width: 1px;
+}
+
+.sort-viz.dense .sort-bar-label {
+  display: none;
+}
+
+.sort-bar-label {
+  position: absolute;
+  left: 50%;
+  bottom: 2px;
+  transform: translateX(-50%);
+  color: rgba(255, 255, 255, 0.92);
+  font-family: var(--mono);
+  font-size: 8px;
+  font-weight: 800;
+  line-height: 1;
+  pointer-events: none;
 }
 
 .sort-bar.active {
@@ -731,11 +841,15 @@ button {
 
 .graph-viz {
   position: relative;
-  height: 52px;
+  height: 74px;
   overflow: hidden;
   border: 1px solid rgba(151, 174, 207, 0.14);
   border-radius: 5px;
   background: rgba(6, 11, 20, 0.38);
+}
+
+.graph-viz.bst-viz {
+  height: 84px;
 }
 
 .graph-viz svg {
@@ -746,7 +860,7 @@ button {
 
 .graph-edge {
   stroke: rgba(151, 174, 207, 0.24);
-  stroke-width: 2;
+  stroke-width: 2.4;
   stroke-linecap: round;
   transition: stroke 120ms ease, stroke-width 120ms ease;
 }
@@ -756,8 +870,8 @@ button {
 }
 
 .graph-edge.active {
-  stroke: var(--orange);
-  stroke-width: 3;
+  stroke: var(--yellow);
+  stroke-width: 4;
 }
 
 .graph-dot {
@@ -773,15 +887,18 @@ button {
 }
 
 .graph-dot.active {
-  fill: var(--orange);
+  fill: var(--yellow);
   stroke: #fff1ce;
 }
 
 .graph-label {
   fill: rgba(236, 244, 255, 0.86);
   font-family: var(--mono);
-  font-size: 6px;
+  font-size: 7px;
   font-weight: 800;
+  paint-order: stroke;
+  stroke: rgba(6, 11, 20, 0.72);
+  stroke-width: 2px;
   text-anchor: middle;
   pointer-events: none;
 }
@@ -795,7 +912,7 @@ button {
   border-radius: 2px;
   background: var(--port-color, var(--cyan));
   box-shadow: 0 0 12px var(--port-color, var(--cyan));
-  cursor: crosshair;
+  cursor: default;
 }
 
 .node-port.in {
@@ -808,6 +925,12 @@ button {
   top: 58px;
 }
 
+.node-output-card .node-port.out {
+  right: -6px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
 .node-port.hw {
   left: 38px;
   top: -5px;
@@ -817,6 +940,10 @@ button {
 
 .node-port:hover {
   transform: scale(1.35);
+}
+
+.node-output-card .node-port:hover {
+  transform: translateY(-50%) scale(1.35);
 }
 
 .conn-path {

@@ -29,10 +29,16 @@ const SORT_KEYS = new Set([
   "RadixSort",
   "CountingSort",
 ]);
+const STRING_SORT_KEYS = new Set(["QuickSort", "RadixSort"]);
 const TRAVERSAL_KEYS = new Set(["BFS", "DFS", "BSTSearch"]);
+const MAX_NODE_LEVEL = 5;
+const RAW_BASE_MAX_VALUE = 10_000;
 const PROCESS_RELEASE_MS = 360;
 const COMPLETION_FLASH_MS = 900;
 const UPLOAD_UNITS_PER_RATE = 5;
+const PRODUCTION_UNITS_PER_RATE = 4.8;
+const TRANSFER_UNITS_PER_RATE = 3.3;
+const FAST_PROGRESS_RESET_RATE = 2.2;
 
 const nodeDefs = {
   RawInput: {
@@ -56,7 +62,7 @@ const nodeDefs = {
     kind: "downloader",
     glyph: "IA",
     color: colors.data,
-    cost: 20,
+    cost: 260,
     input: true,
     output: "int[]",
     accepts: ["raw", "ANY"],
@@ -70,7 +76,7 @@ const nodeDefs = {
     kind: "downloader",
     glyph: "GR",
     color: "#7cd5ff",
-    cost: 24,
+    cost: 320,
     input: true,
     output: "graph",
     accepts: ["raw", "ANY"],
@@ -84,7 +90,7 @@ const nodeDefs = {
     kind: "downloader",
     glyph: "TR",
     color: "#61df9a",
-    cost: 22,
+    cost: 300,
     input: true,
     output: "tree",
     accepts: ["raw", "ANY"],
@@ -98,7 +104,7 @@ const nodeDefs = {
     kind: "downloader",
     glyph: "ST",
     color: "#e0b75b",
-    cost: 18,
+    cost: 240,
     input: true,
     output: "string",
     accepts: ["raw", "ANY"],
@@ -112,7 +118,7 @@ const nodeDefs = {
     kind: "router",
     glyph: "SP",
     color: colors.tools,
-    cost: 35,
+    cost: 420,
     input: true,
     output: "same",
     accepts: ["ANY"],
@@ -126,7 +132,7 @@ const nodeDefs = {
     kind: "router",
     glyph: "DU",
     color: colors.tools,
-    cost: 42,
+    cost: 520,
     input: true,
     output: "same",
     accepts: ["ANY"],
@@ -140,7 +146,7 @@ const nodeDefs = {
     kind: "router",
     glyph: "FO",
     color: "#b9c7dd",
-    cost: 30,
+    cost: 380,
     input: true,
     output: "same",
     accepts: ["ANY"],
@@ -154,7 +160,7 @@ const nodeDefs = {
     kind: "router",
     glyph: "FI",
     color: "#f0ce75",
-    cost: 32,
+    cost: 360,
     input: true,
     output: "same",
     accepts: ["ANY"],
@@ -168,7 +174,7 @@ const nodeDefs = {
     kind: "algorithm",
     glyph: "BS",
     color: colors.process,
-    cost: 55,
+    cost: 320,
     input: true,
     output: "int[]",
     accepts: ["int[]"],
@@ -183,7 +189,7 @@ const nodeDefs = {
     kind: "algorithm",
     glyph: "SS",
     color: "#b797ff",
-    cost: 58,
+    cost: 360,
     input: true,
     output: "int[]",
     accepts: ["int[]"],
@@ -198,7 +204,7 @@ const nodeDefs = {
     kind: "algorithm",
     glyph: "IS",
     color: "#c0a3ff",
-    cost: 60,
+    cost: 300,
     input: true,
     output: "int[]",
     accepts: ["int[]"],
@@ -213,7 +219,7 @@ const nodeDefs = {
     kind: "algorithm",
     glyph: "MS",
     color: "#b69dff",
-    cost: 70,
+    cost: 1100,
     input: true,
     output: "int[]",
     accepts: ["int[]"],
@@ -228,12 +234,12 @@ const nodeDefs = {
     kind: "algorithm",
     glyph: "QS",
     color: "#c98cff",
-    cost: 72,
+    cost: 1250,
     input: true,
-    output: "int[]",
-    accepts: ["int[]"],
+    output: "same",
+    accepts: ["int[]", "string"],
     hwInput: true,
-    rows: ["O(n log n)", "피벗", "빠름"],
+    rows: ["O(n log n)", "피벗 비교", "숫자/문자"],
     baseRate: 3,
   },
   HeapSort: {
@@ -243,7 +249,7 @@ const nodeDefs = {
     kind: "algorithm",
     glyph: "HS",
     color: "#ab8dff",
-    cost: 68,
+    cost: 980,
     input: true,
     output: "int[]",
     accepts: ["int[]"],
@@ -258,12 +264,12 @@ const nodeDefs = {
     kind: "algorithm",
     glyph: "RS",
     color: "#9f9bff",
-    cost: 74,
+    cost: 1500,
     input: true,
-    output: "int[]",
-    accepts: ["int[]"],
+    output: "same",
+    accepts: ["int[]", "string"],
     hwInput: true,
-    rows: ["O(d(n+k))", "자리수 버킷", "안정 정렬"],
+    rows: ["O(d(n+k))", "자리/문자 버킷", "안정 정렬"],
     baseRate: 3.3,
   },
   CountingSort: {
@@ -273,7 +279,7 @@ const nodeDefs = {
     kind: "algorithm",
     glyph: "CS",
     color: "#8fa4ff",
-    cost: 66,
+    cost: 760,
     input: true,
     output: "int[]",
     accepts: ["int[]"],
@@ -288,7 +294,7 @@ const nodeDefs = {
     kind: "algorithm",
     glyph: "BF",
     color: "#ff8a63",
-    cost: 64,
+    cost: 620,
     input: true,
     output: "graph",
     accepts: ["graph", "tree"],
@@ -303,7 +309,7 @@ const nodeDefs = {
     kind: "algorithm",
     glyph: "DF",
     color: "#ff9a78",
-    cost: 62,
+    cost: 580,
     input: true,
     output: "graph",
     accepts: ["graph", "tree"],
@@ -318,7 +324,7 @@ const nodeDefs = {
     kind: "algorithm",
     glyph: "BT",
     color: "#ffad6b",
-    cost: 66,
+    cost: 760,
     input: true,
     output: "tree",
     accepts: ["tree"],
@@ -333,7 +339,7 @@ const nodeDefs = {
     kind: "hardware",
     glyph: "CP",
     color: colors.hardware,
-    cost: 80,
+    cost: 1100,
     input: false,
     output: "cpu",
     outputKind: "hardware",
@@ -348,7 +354,7 @@ const nodeDefs = {
     kind: "hardware",
     glyph: "GP",
     color: "#72b6ff",
-    cost: 120,
+    cost: 1800,
     input: false,
     output: "gpu",
     outputKind: "hardware",
@@ -363,7 +369,7 @@ const nodeDefs = {
     kind: "hardware",
     glyph: "RM",
     color: "#83caff",
-    cost: 94,
+    cost: 1250,
     input: false,
     output: "ram",
     outputKind: "hardware",
@@ -378,7 +384,7 @@ const nodeDefs = {
     kind: "output",
     glyph: "UP",
     color: colors.output,
-    cost: 54,
+    cost: 520,
     input: true,
     output: false,
     accepts: ["ANY"],
@@ -423,6 +429,34 @@ const state = {
   nextId: 1,
   ctxNode: null,
 };
+
+function rawInputLevel() {
+  return clamp(state.nodes.get("n1")?.level || 1, 1, MAX_NODE_LEVEL);
+}
+
+function rawDataScale() {
+  const level = rawInputLevel();
+  return {
+    level,
+    sortCount: 16 + level * 6,
+    maxValue: RAW_BASE_MAX_VALUE * Math.pow(10, level - 1),
+    graphCount: 6 + level * 2,
+    bstCount: 5 + level * 2,
+    stringLength: level + 1,
+  };
+}
+
+function sortScaleKey(mode, scale = rawDataScale()) {
+  return `${mode}:${scale.sortCount}:${scale.maxValue}:${scale.stringLength}`;
+}
+
+function traversalScaleKey(key, scale = rawDataScale()) {
+  return `${key}:${scale.graphCount}:${scale.bstCount}`;
+}
+
+function nodePurchaseCost(def) {
+  return def.cost || 0;
+}
 
 function init() {
   cacheElements();
@@ -551,11 +585,15 @@ function renderPalette() {
   els.libraryCount.textContent = defs.length;
 
   defs.forEach((def) => {
+    const cost = nodePurchaseCost(def);
+    const affordable = state.funds >= cost;
     const item = document.createElement("button");
     item.type = "button";
     item.className = "palette-item";
-    item.draggable = true;
+    item.draggable = affordable;
+    item.disabled = !affordable;
     item.dataset.key = def.key;
+    item.dataset.cost = cost;
     item.style.color = def.color;
     item.innerHTML = `
       <span class="palette-dot"></span>
@@ -563,9 +601,14 @@ function renderPalette() {
         <strong>${def.label}</strong>
         <span>${kindLabel(def.kind)} / ${describePort(def)}</span>
       </span>
-      <span class="palette-cost">$${def.cost}</span>
+      <span class="palette-cost">$${formatShort(cost)}</span>
     `;
     item.addEventListener("dragstart", (event) => {
+      if (state.funds < cost) {
+        event.preventDefault();
+        setStatus(`${def.label} 구매 자금이 부족합니다.`, "warn");
+        return;
+      }
       event.dataTransfer.setData("text/plain", def.key);
       event.dataTransfer.effectAllowed = "copy";
       showDragGhost(def.label, event.clientX, event.clientY);
@@ -579,6 +622,16 @@ function renderPalette() {
       addNode(def.key, point.x, point.y);
     });
     els.nodePalette.appendChild(item);
+  });
+}
+
+function refreshPaletteAffordability() {
+  document.querySelectorAll(".palette-item").forEach((item) => {
+    const def = nodeDefs[item.dataset.key];
+    if (!def) return;
+    const affordable = state.funds >= nodePurchaseCost(def);
+    item.disabled = !affordable;
+    item.draggable = affordable;
   });
 }
 
@@ -672,7 +725,8 @@ function isOpenSpot(x, y, height) {
 }
 
 function visualNodeHeight(key) {
-  return SORT_KEYS.has(key) || TRAVERSAL_KEYS.has(key) ? 190 : 150;
+  if (SORT_KEYS.has(key) || TRAVERSAL_KEYS.has(key)) return 252;
+  return nodeDefs[key]?.output ? 214 : 176;
 }
 
 function handlePaletteDrop(event) {
@@ -688,6 +742,15 @@ function addNode(key, x, y, options = {}) {
   const def = nodeDefs[key];
   if (!def) return null;
 
+  const cost = nodePurchaseCost(def);
+  const shouldPurchase = !options.free && key !== "RawInput" && cost > 0;
+  if (shouldPurchase && state.funds < cost) {
+    setStatus(`${def.label} 구매 자금이 부족합니다.`, "warn");
+    refreshPaletteAffordability();
+    return null;
+  }
+  if (shouldPurchase) state.funds -= cost;
+
   const id = options.fixedId || `n${++state.nextId}`;
   const node = {
     id,
@@ -697,6 +760,9 @@ function addNode(key, x, y, options = {}) {
     y,
     level: 1,
     progress: 0,
+    lastProgress: 0,
+    buffer: 0,
+    flow: createFlowState(),
     status: "idle",
     stats: { rate: def.baseRate, operations: 0, memory: 0, time: 0 },
     outputVersion: key === "RawInput" ? 1 : 0,
@@ -716,6 +782,7 @@ function addNode(key, x, y, options = {}) {
   selectNode(id);
   updateAll();
   unlockAchievementIfNeeded();
+  if (shouldPurchase) setStatus(`${def.label} 구매 완료.`, "ok");
   return node;
 }
 
@@ -729,20 +796,24 @@ function renderNode(node) {
   el.style.setProperty("--node-color", def.color);
 
   const inputPort = def.input ? `<span class="node-port in" data-port="in" title="입력"></span>` : "";
-  const outputPort = def.output ? `<span class="node-port out" data-port="out" title="출력"></span>` : "";
   const hwPort = def.hwInput ? `<span class="node-port hw" data-port="hw" title="하드웨어 입력"></span>` : "";
   const rows = def.rows.map((row, index) => {
-    const value = index === 0 ? `${node.stats.rate.toFixed(1)}/s` : row;
+    const rowText = nodeRowText(node, row);
+    const value = index === 0 ? `${node.stats.rate.toFixed(1)}/s` : rowText;
     return `
       <div class="node-row">
         <span class="row-chip" style="--row-color:${rowColor(index, def)}"></span>
-        <span>${row}</span>
+        <span class="row-label">${rowText}</span>
         <strong>${value}</strong>
       </div>
     `;
   }).join("");
   const sortViz = node.sort ? `<div class="sort-viz" aria-label="정렬 시각화"></div>` : "";
-  const traversalViz = node.traversal ? `<div class="graph-viz" aria-label="탐색 시각화"></div>` : "";
+  const traversalViz = node.traversal
+    ? `<div class="graph-viz ${node.key === "BSTSearch" ? "bst-viz" : "network-viz"}" aria-label="탐색 시각화"></div>`
+    : "";
+  const outputArtifact = def.output ? renderOutputArtifact(node) : "";
+  const flowSummary = `<div class="node-flow" aria-label="데이터 흐름"></div>`;
 
   const progressBar = isProcessingNode(node) ? "" : `
       <div class="progress ${node.upload ? "upload-progress" : ""}">
@@ -751,7 +822,7 @@ function renderNode(node) {
     `;
 
   el.innerHTML = `
-    ${inputPort}${outputPort}${hwPort}
+    ${inputPort}${hwPort}
     <header class="node-header">
       <span class="node-glyph">${def.glyph}</span>
       <span class="node-title">
@@ -764,6 +835,8 @@ function renderNode(node) {
       ${rows}
       ${sortViz}
       ${traversalViz}
+      ${outputArtifact}
+      ${flowSummary}
       ${progressBar}
     </section>
   `;
@@ -773,9 +846,82 @@ function renderNode(node) {
   el.addEventListener("contextmenu", (event) => showContextMenu(event, node.id));
   el.querySelectorAll(".node-port").forEach((port) => {
     port.style.setProperty("--port-color", port.dataset.port === "hw" ? colors.hardware : def.color);
+    port.addEventListener("pointerdown", (event) => event.stopPropagation());
+    port.addEventListener("click", (event) => handlePortClick(event, node.id, port.dataset.port));
   });
 
   return el;
+}
+
+function renderOutputArtifact(node) {
+  const outputPort = `<span class="node-port out" data-port="out" title="출력"></span>`;
+  return `
+    <div class="node-output-card ${isNodeOutputReady(node) ? "ready" : "pending"}" style="--artifact-color:${outputArtifactColor(node)}">
+      <span class="output-icon">${outputArtifactGlyph(node)}</span>
+      <span class="output-copy">
+        <strong class="output-title">${outputArtifactTitle(node)}</strong>
+        <span class="output-meta">${outputArtifactMeta(node)}</span>
+      </span>
+      ${outputPort}
+    </div>
+  `;
+}
+
+function refreshOutputArtifact(node) {
+  const artifact = node.el?.querySelector(".node-output-card");
+  if (!artifact) return;
+  artifact.classList.toggle("ready", isNodeOutputReady(node));
+  artifact.classList.toggle("pending", !isNodeOutputReady(node));
+  artifact.style.setProperty("--artifact-color", outputArtifactColor(node));
+  const icon = artifact.querySelector(".output-icon");
+  const title = artifact.querySelector(".output-title");
+  const meta = artifact.querySelector(".output-meta");
+  if (icon) icon.textContent = outputArtifactGlyph(node);
+  if (title) title.textContent = outputArtifactTitle(node);
+  if (meta) meta.textContent = outputArtifactMeta(node);
+}
+
+function outputArtifactGlyph(node) {
+  const type = getOutputType(node);
+  const glyphs = {
+    raw: "RW",
+    "int[]": "[]",
+    graph: "GR",
+    tree: "TR",
+    string: "ST",
+    cpu: "CP",
+    gpu: "GP",
+    ram: "RM",
+    ANY: "DT",
+  };
+  return glyphs[type] || "DT";
+}
+
+function outputArtifactColor(node) {
+  return connectionColor(getOutputType(node), node.def.outputKind === "hardware");
+}
+
+function outputArtifactTitle(node) {
+  const type = getOutputType(node);
+  if (node.key === "RawInput") return "원본 데이터";
+  if (node.def.outputKind === "hardware") return `${typeLabel(type)} 신호`;
+  if (node.sort) return `${typeLabel(type)} 정렬 결과`;
+  if (node.traversal) return node.key === "BSTSearch" ? "BST 탐색 결과" : `${node.def.label} 결과`;
+  if (node.def.kind === "downloader") return `${typeLabel(type)} 데이터`;
+  if (node.def.kind === "router") return `${node.def.label} 데이터`;
+  return `${typeLabel(type)} 데이터`;
+}
+
+function outputArtifactMeta(node) {
+  const amount = Math.round(Math.max(1, node.outputAmount || defaultOutputAmount(node.def)));
+  const status = isNodeOutputReady(node) ? "준비" : "처리중";
+  return `${typeLabel(getOutputType(node))} · ${formatShort(amount)}개 · ${status}`;
+}
+
+function nodeRowText(node, row) {
+  if (node.key === "RawInput" && row.startsWith("n =")) return `n = ${rawDataScale().sortCount}`;
+  if (node.key === "BSTSearch" && row.startsWith("target")) return `target = ${node.traversal?.target ?? "?"}`;
+  return row;
 }
 
 function rowColor(index, def) {
@@ -791,15 +937,28 @@ function createUploadState() {
     amount: 0,
     uploaded: 0,
     complete: false,
+    hold: 0,
+  };
+}
+
+function createFlowState() {
+  return {
+    productionRate: 0,
+    transferRate: 0,
+    inboundRate: 0,
+    uploadRate: 0,
   };
 }
 
 function defaultOutputAmount(def) {
-  if (def.output === "int[]") return 22;
-  if (def.key === "BSTSearch") return bstSearchGraph.nodes.length;
-  if (def.output === "graph" || def.output === "tree") return traversalGraph.nodes.length;
-  if (def.output === "string") return 18;
-  if (def.output === "raw") return 16;
+  const scale = rawDataScale();
+  if (def.output === "int[]") return scale.sortCount;
+  if (def.key === "BSTSearch") return scale.bstCount;
+  if (def.output === "same" && STRING_SORT_KEYS.has(def.key)) return scale.sortCount;
+  if (def.output === "graph") return scale.graphCount;
+  if (def.output === "tree") return scale.bstCount;
+  if (def.output === "string") return scale.sortCount;
+  if (def.output === "raw") return scale.sortCount;
   return 12;
 }
 
@@ -808,6 +967,9 @@ function isCompletionPulseActive(node) {
 }
 
 function refreshNode(node) {
+  syncSortStateForInput(node);
+  syncTraversalStateForInput(node);
+  if (!isProcessingNode(node) && node.def.output) node.outputAmount = defaultOutputAmount(node.def);
   const classNames = ["lab-node", node.status];
   if (state.selected === node.id) classNames.push("selected");
   if (state.connecting?.nodeId === node.id) classNames.push("connecting-source");
@@ -817,13 +979,20 @@ function refreshNode(node) {
   node.el.style.top = `${node.y}px`;
   node.el.style.setProperty("--node-color", node.def.color);
 
-  const rows = node.el.querySelectorAll(".node-row strong");
-  if (rows[0]) rows[0].textContent = `${node.stats.rate.toFixed(1)}/s`;
+  node.el.querySelectorAll(".node-row").forEach((rowEl, index) => {
+    const rowText = nodeRowText(node, node.def.rows[index] || "");
+    const label = rowEl.querySelector(".row-label");
+    const value = rowEl.querySelector("strong");
+    if (label) label.textContent = rowText;
+    if (value) value.textContent = index === 0 ? `${node.stats.rate.toFixed(1)}/s` : rowText;
+  });
   refreshNodeProgress(node);
+  refreshNodeFlow(node);
   const level = node.el.querySelector(".node-level");
   if (level) level.textContent = `L${node.level}`;
   if (node.sort) refreshSortViz(node);
   if (node.traversal) refreshTraversalViz(node);
+  refreshOutputArtifact(node);
 }
 
 function refreshNodeProgress(node) {
@@ -831,7 +1000,10 @@ function refreshNodeProgress(node) {
   const bar = track?.querySelector("span");
   if (!bar) return;
   const progress = clamp(node.progress, 0, 100);
+  const wrapped = node.lastProgress > 75 && progress < 25;
+  track.classList.toggle("instant-reset", wrapped);
   bar.style.setProperty("--progress", `${progress}%`);
+  node.lastProgress = progress;
   if (node.upload) {
     const uploaded = Math.min(node.upload.amount, node.upload.uploaded);
     track.dataset.label = node.upload.amount
@@ -891,20 +1063,34 @@ function handleNodeClick(event, id) {
   }
 
   hideContextMenu();
+  selectNode(id);
+}
 
-  if (state.connecting) {
-    if (state.connecting.nodeId === id) cancelConnection();
-    else connectToNode(id);
+function handlePortClick(event, id, portName) {
+  event.stopPropagation();
+  const node = state.nodes.get(id);
+  if (!node) return;
+
+  if (state.dragMoved) {
+    state.dragMoved = false;
     return;
   }
 
   selectNode(id);
-  if (!node.def.output) {
-    setStatus("이 노드는 출력이 없어서 연결을 시작할 수 없습니다.", "warn");
+  hideContextMenu();
+
+  if (portName === "out") {
+    if (state.connecting?.nodeId === id) cancelConnection();
+    else beginConnection(id);
     return;
   }
 
-  beginConnection(id);
+  if (state.connecting) {
+    connectToNode(id, portName);
+    return;
+  }
+
+  setStatus("출력 연결부를 먼저 클릭하세요.", "warn");
 }
 
 function beginConnection(nodeId) {
@@ -913,11 +1099,11 @@ function beginConnection(nodeId) {
   state.connecting = { nodeId, port: "out" };
   selectNode(nodeId);
   refreshNode(node);
-  setStatus(`${node.def.label}에서 연결 중입니다. 대상 노드를 클릭하세요.`, "ok");
+  setStatus(`${node.def.label}에서 연결 중입니다. 대상 연결부를 클릭하세요.`, "ok");
   renderConnections();
 }
 
-function connectToNode(toId) {
+function connectToNode(toId, toPortName = null) {
   const fromId = state.connecting?.nodeId;
   const fromNode = state.nodes.get(fromId);
   const toNode = state.nodes.get(toId);
@@ -926,7 +1112,7 @@ function connectToNode(toId) {
     return;
   }
 
-  const toPort = fromNode.def.outputKind === "hardware" ? "hw" : "in";
+  const toPort = toPortName || (fromNode.def.outputKind === "hardware" ? "hw" : "in");
   const connection = createConnection(fromId, "out", toId, toPort);
   if (!connection.valid) {
     setStatus("이 노드끼리는 연결할 수 없습니다.", "warn");
@@ -1113,13 +1299,18 @@ function renderInspector(node) {
   els.nodeInfo.className = "node-info";
   const inbound = state.connections.filter((conn) => conn.toId === node.id && conn.valid).length;
   const outbound = state.connections.filter((conn) => conn.fromId === node.id && conn.valid).length;
-  const canUpgrade = node.level < 5;
+  const canUpgrade = node.level < MAX_NODE_LEVEL;
   const upgradeCost = upgradePrice(node);
+  const primaryFlowLabel = node.upload ? "업로드" : "생산";
+  const primaryFlowRate = node.upload ? node.flow.uploadRate : node.flow.productionRate;
   els.nodeInfo.innerHTML = `
     <div class="node-info-grid">
       <div><span class="metric-label">처리율</span><b>${node.stats.rate.toFixed(1)}/s</b></div>
       <div><span class="metric-label">연결</span><b>입력 ${inbound} / 출력 ${outbound}</b></div>
       <div><span class="metric-label">타입</span><b>${typeLabel(getOutputType(node))}</b></div>
+      <div><span class="metric-label">${primaryFlowLabel}</span><b>${formatRate(primaryFlowRate)}</b></div>
+      <div><span class="metric-label">이동</span><b>${formatRate(node.flow.transferRate)}</b></div>
+      <div><span class="metric-label">적재</span><b>${formatShort(node.buffer || 0)}</b></div>
     </div>
     <div class="upgrade-list">
       <button class="upgrade-button" id="upgrade-selected" ${canUpgrade ? "" : "disabled"}>
@@ -1135,6 +1326,7 @@ function renderInspector(node) {
 }
 
 function upgradePrice(node) {
+  if (node.key === "RawInput") return Math.round(650 * Math.pow(2.1, node.level - 1));
   return Math.round((node.def.cost + 40) * Math.pow(1.75, node.level));
 }
 
@@ -1142,10 +1334,19 @@ function upgradeNode(id) {
   const node = state.nodes.get(id);
   if (!node) return;
   const cost = upgradePrice(node);
-  if (state.funds < cost || node.level >= 5) return;
+  if (state.funds < cost || node.level >= MAX_NODE_LEVEL) return;
   state.funds -= cost;
   node.level += 1;
   node.stats.rate = node.def.baseRate * (1 + (node.level - 1) * 0.32);
+  if (node.key === "RawInput") {
+    node.outputVersion += 1;
+    node.outputAmount = defaultOutputAmount(node.def);
+    state.nodes.forEach((item) => {
+      syncSortStateForInput(item);
+      syncTraversalStateForInput(item);
+      if (!isProcessingNode(item) && item.def.output) item.outputAmount = defaultOutputAmount(item.def);
+    });
+  }
   refreshNode(node);
   renderInspector(node);
   updateAll();
@@ -1228,7 +1429,7 @@ function simTick() {
     refreshNode(node);
   });
 
-  if (!active) setStatus("노드를 클릭해 연결을 시작하세요.", "ok");
+  if (!active) setStatus("출력 연결부를 클릭해 연결을 시작하세요.", "ok");
   else if (!hasEarningOutput) {
     setStatus(outputNodes.length ? "처리 완료 데이터를 기다리고 있습니다." : "업로더까지 연결하면 자금을 벌 수 있습니다.", "warn");
   }
@@ -1390,13 +1591,18 @@ function renderAchievements() {
   });
 }
 
-function createSortState(key) {
-  const source = Array.from({ length: 22 }, (_, index) => index + 1);
+function createSortState(key, mode = "number") {
+  const scale = rawDataScale();
+  const source = mode === "string"
+    ? createStringSortSource(scale.sortCount, scale.stringLength)
+    : createNumberSortSource(scale.sortCount, scale.maxValue);
   shuffle(source);
   const frames = buildSortFrames(key, source);
   const first = frames[0] || makeSortFrame(source);
   return {
     key,
+    mode,
+    scaleKey: sortScaleKey(mode, scale),
     values: first.values.slice(),
     frames,
     frameIndex: 0,
@@ -1406,6 +1612,56 @@ function createSortState(key) {
     highlight: first.highlight.slice(),
     sorted: first.sorted.slice(),
   };
+}
+
+function syncSortStateForInput(node) {
+  if (!node.sort) return;
+  const mode = sortModeForNode(node);
+  if (node.sort.mode !== mode || node.sort.scaleKey !== sortScaleKey(mode)) {
+    node.sort = createSortState(node.key, mode);
+    node.outputVersion = 0;
+    node.outputAmount = defaultOutputAmount(node.def);
+  }
+}
+
+function refreshNodeFlow(node) {
+  const flow = node.el?.querySelector(".node-flow");
+  if (!flow) return;
+  const buffer = Math.max(0, node.buffer || 0);
+  if (node.upload) {
+    flow.textContent = `업로드 ${formatRate(node.flow.uploadRate)} · 유입 ${formatRate(node.flow.inboundRate)} · 적재 ${formatShort(buffer)}`;
+  } else {
+    flow.textContent = `생산 ${formatRate(node.flow.productionRate)} · 이동 ${formatRate(node.flow.transferRate)} · 적재 ${formatShort(buffer)}`;
+  }
+  flow.classList.toggle("loaded", buffer >= Math.max(8, defaultOutputAmount(node.def)));
+}
+
+function sortModeForNode(node) {
+  return STRING_SORT_KEYS.has(node.key) && inputTypeForNode(node) === "string" ? "string" : "number";
+}
+
+function inputTypeForNode(node) {
+  const upstream = state.connections.find((conn) => conn.toId === node.id && conn.valid && !conn.isHardware);
+  return upstream?.type || null;
+}
+
+function createNumberSortSource(count, maxValue) {
+  return randomUniqueNumbers(count, 1, maxValue);
+}
+
+function createStringSortSource(count, length) {
+  const values = new Set();
+  while (values.size < count) values.add(randomString(length));
+  return [...values];
+}
+
+function randomString(length) {
+  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+  let value = "";
+  for (let index = 0; index < length; index += 1) {
+    value += alphabet[Math.floor(Math.random() * alphabet.length)];
+  }
+  return value;
 }
 
 function shuffle(values) {
@@ -1620,6 +1876,8 @@ function buildHeapSortFrames(initialValues) {
 }
 
 function buildRadixSortFrames(initialValues) {
+  if (typeof initialValues[0] === "string") return buildStringRadixSortFrames(initialValues);
+
   const values = initialValues.slice();
   const frames = [makeSortFrame(values)];
   const length = values.length;
@@ -1655,27 +1913,68 @@ function buildRadixSortFrames(initialValues) {
   return frames;
 }
 
+function buildStringRadixSortFrames(initialValues) {
+  const values = initialValues.slice();
+  const frames = [makeSortFrame(values)];
+  const length = values.length;
+  const maxLength = Math.max(...values.map((value) => value.length));
+
+  for (let position = maxLength - 1; position >= 0; position -= 1) {
+    const counts = Array(27).fill(0);
+    values.forEach((value, index) => {
+      counts[stringRadixCode(value, position)] += 1;
+      pushSortFrame(frames, values, [index]);
+    });
+
+    for (let index = 1; index < counts.length; index += 1) {
+      counts[index] += counts[index - 1];
+    }
+
+    const output = Array(length);
+    for (let index = length - 1; index >= 0; index -= 1) {
+      const code = stringRadixCode(values[index], position);
+      counts[code] -= 1;
+      output[counts[code]] = values[index];
+      pushSortFrame(frames, values, [index]);
+    }
+
+    for (let index = 0; index < length; index += 1) {
+      values[index] = output[index];
+      pushSortFrame(frames, values, [index], position === 0 ? indexRange(0, index + 1) : []);
+    }
+  }
+
+  pushSortFrame(frames, values, [], indexRange(0, length));
+  return frames;
+}
+
+function stringRadixCode(value, position) {
+  const code = value.charCodeAt(position);
+  return Number.isFinite(code) ? clamp(code - 64, 1, 26) : 0;
+}
+
 function buildCountingSortFrames(initialValues) {
   const values = initialValues.slice();
   const frames = [makeSortFrame(values)];
   const length = values.length;
-  const max = Math.max(...values);
-  const counts = Array(max + 1).fill(0);
+  const counts = new Map();
 
   values.forEach((value, index) => {
-    counts[value] += 1;
+    counts.set(value, (counts.get(value) || 0) + 1);
     pushSortFrame(frames, values, [index]);
   });
 
   let writeIndex = 0;
-  for (let value = 0; value < counts.length; value += 1) {
-    while (counts[value] > 0) {
+  const sortedValues = [...counts.keys()].sort((a, b) => a - b);
+  sortedValues.forEach((value) => {
+    let count = counts.get(value);
+    while (count > 0) {
       values[writeIndex] = value;
-      counts[value] -= 1;
+      count -= 1;
       pushSortFrame(frames, values, [writeIndex], indexRange(0, writeIndex + 1));
       writeIndex += 1;
     }
-  }
+  });
 
   pushSortFrame(frames, values, [], indexRange(0, length));
   return frames;
@@ -1685,6 +1984,7 @@ function advanceSortVisuals(dt) {
   const reachable = getReachableNodeIds();
   state.nodes.forEach((node) => {
     if (!node.sort) return;
+    syncSortStateForInput(node);
     if (!reachable.has(node.id)) {
       node.sort.elapsed = 0;
       refreshSortViz(node);
@@ -1694,7 +1994,7 @@ function advanceSortVisuals(dt) {
     if (node.sort.done) {
       node.sort.hold += dt;
       if (node.sort.hold >= PROCESS_RELEASE_MS) {
-        node.sort = createSortState(node.key);
+        node.sort = createSortState(node.key, sortModeForNode(node));
         node.status = "running";
         refreshNode(node);
       }
@@ -1733,10 +2033,10 @@ function completeProcessingCycle(node) {
     node.traversal.done = true;
     node.traversal.hold = 0;
     if (node.traversal.key !== "BSTSearch") {
-      node.traversal.visited = graphForTraversal(node.traversal.key).nodes.map((point) => point.id);
-      node.traversal.active = null;
-      node.traversal.edge = null;
+      node.traversal.visited = node.traversal.graph.nodes.map((point) => point.id);
     }
+    node.traversal.active = null;
+    node.traversal.edge = null;
     node.outputAmount = node.traversal.visited.length;
   }
   node.outputVersion += 1;
@@ -1755,69 +2055,37 @@ function applySortFrame(sort) {
 function refreshSortViz(node) {
   const container = node.el.querySelector(".sort-viz");
   if (!container || !node.sort) return;
+  container.classList.toggle("string-mode", node.sort.mode === "string");
+  container.classList.toggle("dense", node.sort.values.length > 32);
   container.classList.toggle("done", node.sort.done);
-  const max = node.sort.values.length;
+  const metrics = node.sort.values.map(sortValueMetric);
+  const max = Math.max(...metrics, 1);
   container.innerHTML = node.sort.values.map((value, index) => {
     const active = node.sort.highlight.includes(index);
     const sorted = node.sort.done || node.sort.sorted.includes(index);
-    return `<span class="sort-bar ${active ? "active" : ""} ${sorted ? "sorted" : ""}" style="height:${10 + (value / max) * 30}px"></span>`;
+    const label = node.sort.mode === "string" ? `<span class="sort-bar-label">${String(value).slice(0, 1)}</span>` : "";
+    return `<span class="sort-bar ${active ? "active" : ""} ${sorted ? "sorted" : ""}" style="height:${10 + (metrics[index] / max) * 30}px">${label}</span>`;
   }).join("");
 }
 
-const traversalGraph = {
-  nodes: [
-    { id: 0, x: 18, y: 27 },
-    { id: 1, x: 50, y: 12 },
-    { id: 2, x: 50, y: 42 },
-    { id: 3, x: 86, y: 9 },
-    { id: 4, x: 86, y: 30 },
-    { id: 5, x: 86, y: 51 },
-    { id: 6, x: 124, y: 18 },
-    { id: 7, x: 124, y: 44 },
-  ],
-  edges: [
-    [0, 1],
-    [0, 2],
-    [1, 3],
-    [1, 4],
-    [2, 4],
-    [2, 5],
-    [3, 6],
-    [4, 6],
-    [5, 7],
-    [6, 7],
-  ],
-};
-
-const bstSearchGraph = {
-  target: 60,
-  nodes: [
-    { id: 0, x: 71, y: 10, value: 50 },
-    { id: 1, x: 38, y: 30, value: 25 },
-    { id: 2, x: 104, y: 30, value: 75 },
-    { id: 3, x: 20, y: 50, value: 10 },
-    { id: 4, x: 56, y: 50, value: 35 },
-    { id: 5, x: 88, y: 50, value: 60 },
-    { id: 6, x: 122, y: 50, value: 90 },
-  ],
-  edges: [
-    [0, 1],
-    [0, 2],
-    [1, 3],
-    [1, 4],
-    [2, 5],
-    [2, 6],
-  ],
-};
-
-function graphForTraversal(key) {
-  return key === "BSTSearch" ? bstSearchGraph : traversalGraph;
+function sortValueMetric(value) {
+  if (typeof value === "number") return value;
+  if (typeof value === "string") return stringRadixCode(value, 0);
+  return 1;
 }
 
 function createTraversalState(key) {
+  const scale = rawDataScale();
+  const graph = createTraversalGraph(key, scale);
+  const labels = createTraversalLabels(key, graph);
+  const target = key === "BSTSearch" ? randomChoice(graph.nodes.filter((node) => node.id !== graph.rootId).map((node) => labels[node.id])) : null;
   return {
     key,
-    steps: buildTraversalSteps(key),
+    graph,
+    labels,
+    target,
+    scaleKey: traversalScaleKey(key, scale),
+    steps: buildTraversalSteps(key, graph, labels, target),
     index: 0,
     elapsed: 0,
     hold: 0,
@@ -1828,24 +2096,128 @@ function createTraversalState(key) {
   };
 }
 
-function buildTraversalSteps(key) {
-  if (key === "DFS") return buildDfsSteps();
-  if (key === "BSTSearch") return buildBstSearchSteps();
-  return buildBfsSteps();
+function syncTraversalStateForInput(node) {
+  if (!node.traversal) return;
+  if (node.traversal.scaleKey !== traversalScaleKey(node.key)) {
+    node.traversal = createTraversalState(node.key);
+    node.outputVersion = 0;
+    node.outputAmount = defaultOutputAmount(node.def);
+  }
 }
 
-function traversalAdjacency(graph = traversalGraph) {
+function createTraversalGraph(key, scale = rawDataScale()) {
+  return key === "BSTSearch" ? createBstGraph(scale.bstCount) : createNetworkGraph(scale.graphCount);
+}
+
+function createNetworkGraph(count) {
+  const rows = 4;
+  const cols = Math.ceil(count / rows);
+  const xStep = cols > 1 ? 128 / (cols - 1) : 0;
+  const yStep = 62 / (rows - 1);
+  const nodes = Array.from({ length: count }, (_, id) => {
+    const col = Math.floor(id / rows);
+    const row = id % rows;
+    return {
+      id,
+      x: 16 + col * xStep,
+      y: 13 + row * yStep,
+    };
+  });
+  const edges = [];
+  for (let id = 0; id < count; id += 1) {
+    if (id + 1 < count && Math.floor(id / rows) === Math.floor((id + 1) / rows)) edges.push([id, id + 1]);
+    if (id + rows < count) edges.push([id, id + rows]);
+    if (id + rows + 1 < count && id % rows < rows - 1) edges.push([id, id + rows + 1]);
+  }
+  return {
+    viewBox: "0 0 160 88",
+    radius: count > 12 ? 5.2 : 6.4,
+    labelOffset: 2.6,
+    nodes,
+    edges,
+    rootId: 0,
+  };
+}
+
+function createBstGraph(count) {
+  const nodes = [];
+  const edges = [];
+  let rootId = 0;
+
+  function build(start, end, depth, xMin, xMax, parentId = null) {
+    if (start > end) return;
+    const id = Math.floor((start + end) / 2);
+    if (parentId === null) rootId = id;
+    nodes.push({
+      id,
+      x: (xMin + xMax) / 2,
+      y: 14 + depth * 23,
+    });
+    if (parentId !== null) edges.push([parentId, id]);
+    build(start, id - 1, depth + 1, xMin, (xMin + xMax) / 2, id);
+    build(id + 1, end, depth + 1, (xMin + xMax) / 2, xMax, id);
+  }
+
+  build(0, count - 1, 0, 8, 160);
+  return {
+    viewBox: "0 0 168 104",
+    radius: count > 11 ? 5.8 : 7.2,
+    labelOffset: 2.8,
+    nodes: nodes.sort((a, b) => a.id - b.id),
+    edges,
+    rootId,
+  };
+}
+
+function createTraversalLabels(key, graph) {
+  if (key !== "BSTSearch") return labelsFromValues(graph.nodes, randomUniqueNumbers(graph.nodes.length, 10, 99));
+
+  const sortedValues = randomUniqueNumbers(graph.nodes.length, 10, 99).sort((a, b) => a - b);
+  return graph.nodes.reduce((labels, node) => {
+    labels[node.id] = sortedValues[node.id];
+    return labels;
+  }, {});
+}
+
+function labelsFromValues(nodes, values) {
+  return nodes.reduce((labels, node, index) => {
+    labels[node.id] = values[index];
+    return labels;
+  }, {});
+}
+
+function randomUniqueNumbers(count, min, max) {
+  const values = new Set();
+  while (values.size < count) values.add(randomInt(min, max));
+  return [...values];
+}
+
+function randomInt(min, max) {
+  return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
+function randomChoice(values) {
+  return values[Math.floor(Math.random() * values.length)];
+}
+
+function buildTraversalSteps(key, graph, labels, target) {
+  if (key === "DFS") return buildDfsSteps(graph);
+  if (key === "BSTSearch") return buildBstSearchSteps(graph, labels, target);
+  return buildBfsSteps(graph);
+}
+
+function traversalAdjacency(graph) {
   return graph.nodes.reduce((adjacency, node) => {
     adjacency[node.id] = [];
     return adjacency;
   }, {});
 }
 
-function buildBfsSteps() {
-  const adjacency = traversalAdjacency(traversalGraph);
-  traversalGraph.edges.forEach(([from, to]) => adjacency[from].push(to));
-  const seen = new Set([0]);
-  const queue = [{ node: 0, from: null }];
+function buildBfsSteps(graph) {
+  const adjacency = traversalAdjacency(graph);
+  graph.edges.forEach(([from, to]) => adjacency[from].push(to));
+  const seen = new Set([graph.rootId]);
+  const queue = [{ node: graph.rootId, from: null }];
   const steps = [];
 
   while (queue.length) {
@@ -1860,9 +2232,9 @@ function buildBfsSteps() {
   return steps;
 }
 
-function buildDfsSteps() {
-  const adjacency = traversalAdjacency(traversalGraph);
-  traversalGraph.edges.forEach(([from, to]) => adjacency[from].push(to));
+function buildDfsSteps(graph) {
+  const adjacency = traversalAdjacency(graph);
+  graph.edges.forEach(([from, to]) => adjacency[from].push(to));
   const seen = new Set();
   const steps = [];
 
@@ -1873,30 +2245,29 @@ function buildDfsSteps() {
     adjacency[node].forEach((next) => visit(next, node));
   }
 
-  visit(0, null);
+  visit(graph.rootId, null);
   return steps;
 }
 
-function buildBstSearchSteps() {
+function buildBstSearchSteps(graph, labels, target) {
   const children = new Map();
-  bstSearchGraph.edges.forEach(([from, to]) => {
-    const parent = bstSearchGraph.nodes.find((node) => node.id === from);
-    const child = bstSearchGraph.nodes.find((node) => node.id === to);
-    if (!parent || !child) return;
-    const branch = child.value < parent.value ? "left" : "right";
+  graph.edges.forEach(([from, to]) => {
+    const parentValue = labels[from];
+    const childValue = labels[to];
+    if (parentValue === undefined || childValue === undefined) return;
+    const branch = childValue < parentValue ? "left" : "right";
     children.set(from, { ...children.get(from), [branch]: to });
   });
 
-  const values = new Map(bstSearchGraph.nodes.map((node) => [node.id, node.value]));
   const steps = [];
-  let current = 0;
+  let current = graph.rootId;
   let from = null;
   while (current !== undefined && current !== null) {
     steps.push({ node: current, from });
-    const value = values.get(current);
-    if (value === bstSearchGraph.target) break;
+    const value = labels[current];
+    if (value === target) break;
     from = current;
-    current = bstSearchGraph.target < value ? children.get(current)?.left : children.get(current)?.right;
+    current = target < value ? children.get(current)?.left : children.get(current)?.right;
   }
   return steps;
 }
@@ -1905,6 +2276,7 @@ function advanceTraversalVisuals(dt) {
   const reachable = getReachableNodeIds();
   state.nodes.forEach((node) => {
     if (!node.traversal) return;
+    syncTraversalStateForInput(node);
     if (!reachable.has(node.id)) {
       node.traversal.elapsed = 0;
       refreshTraversalViz(node);
@@ -1954,37 +2326,40 @@ function refreshTraversalViz(node) {
   const container = node.el.querySelector(".graph-viz");
   if (!container || !node.traversal) return;
   container.classList.toggle("done", node.traversal.done);
-  const graph = graphForTraversal(node.traversal.key);
+  const graph = node.traversal.graph;
   const visited = new Set(node.traversal.visited);
   const activeEdge = node.traversal.edge ? node.traversal.edge.join("-") : "";
   const points = new Map(graph.nodes.map((point) => [point.id, point]));
   const markAllVisited = node.traversal.done && node.traversal.key !== "BSTSearch";
+  const showVisited = node.traversal.key !== "BSTSearch" || node.traversal.done;
   const edges = graph.edges.map(([from, to]) => {
     const start = points.get(from);
     const end = points.get(to);
     const edgeKey = `${from}-${to}`;
     const classes = ["graph-edge"];
-    if (markAllVisited || (visited.has(from) && visited.has(to))) classes.push("visited");
+    if (markAllVisited || (showVisited && visited.has(from) && visited.has(to))) classes.push("visited");
     if (edgeKey === activeEdge) classes.push("active");
     return `<line class="${classes.join(" ")}" x1="${start.x}" y1="${start.y}" x2="${end.x}" y2="${end.y}"></line>`;
   }).join("");
   const labels = graph.nodes.map((point) => {
-    if (point.value === undefined) return "";
-    return `<text class="graph-label" x="${point.x}" y="${point.y + 2.4}">${point.value}</text>`;
+    const label = node.traversal.labels?.[point.id];
+    if (label === undefined) return "";
+    return `<text class="graph-label" x="${point.x}" y="${point.y + (graph.labelOffset || 2.6)}">${label}</text>`;
   }).join("");
   const nodes = graph.nodes.map((point) => {
     const classes = ["graph-dot"];
-    if (markAllVisited || visited.has(point.id)) classes.push("visited");
+    if (markAllVisited || (showVisited && visited.has(point.id))) classes.push("visited");
     if (point.id === node.traversal.active) classes.push("active");
-    return `<circle class="${classes.join(" ")}" cx="${point.x}" cy="${point.y}" r="4.6"></circle>`;
+    return `<circle class="${classes.join(" ")}" cx="${point.x}" cy="${point.y}" r="${graph.radius || 5.4}"></circle>`;
   }).join("");
 
-  container.innerHTML = `<svg viewBox="0 0 142 60" aria-hidden="true">${edges}${nodes}${labels}</svg>`;
+  container.innerHTML = `<svg viewBox="${graph.viewBox || "0 0 142 60"}" aria-hidden="true">${edges}${nodes}${labels}</svg>`;
 }
 
 function advanceNodeProgress(dt) {
   const reachable = getReachableNodeIds();
   const active = reachable.size > 1;
+  advanceDataFlow(dt, reachable, active);
   state.nodes.forEach((node) => {
     const running = active && reachable.has(node.id);
     if (node.sort) {
@@ -1997,10 +2372,65 @@ function advanceNodeProgress(dt) {
       const increment = dt * Math.max(0.018, node.stats.rate * 0.026);
       node.progress = (node.progress + increment) % 100;
     } else {
-      node.progress = approach(node.progress, 0, dt * 0.08);
+      node.progress = approach(node.progress, 0, dt * FAST_PROGRESS_RESET_RATE);
     }
     refreshNodeProgress(node);
+    refreshNodeFlow(node);
   });
+}
+
+function advanceDataFlow(dt, reachable, active) {
+  const seconds = dt / 1000;
+  state.nodes.forEach((node) => {
+    node.flow = createFlowState();
+    if (!active || !reachable.has(node.id)) {
+      node.buffer = approach(node.buffer || 0, 0, dt * 0.18);
+      return;
+    }
+
+    if (!node.upload) {
+      const productionRate = productionRateForNode(node);
+      node.flow.productionRate = productionRate;
+      node.buffer = Math.max(0, (node.buffer || 0) + productionRate * seconds);
+    }
+  });
+
+  state.connections
+    .filter((conn) => conn.valid && !conn.isHardware && canTransmitConnection(conn, reachable))
+    .forEach((conn) => {
+      const source = state.nodes.get(conn.fromId);
+      const target = state.nodes.get(conn.toId);
+      if (!source || !target) return;
+      const rate = transferRateForNode(source);
+      const moved = Math.min(source.buffer || 0, rate * seconds);
+      source.buffer = Math.max(0, (source.buffer || 0) - moved);
+      target.buffer = Math.max(0, (target.buffer || 0) + moved);
+      source.flow.transferRate += rate;
+      target.flow.inboundRate += moved / Math.max(seconds, 0.001);
+    });
+
+  state.nodes.forEach((node) => {
+    if (!node.upload || !active || !reachable.has(node.id)) return;
+    const rate = uploadRateForNode(node);
+    const uploaded = Math.min(node.buffer || 0, rate * seconds);
+    node.buffer = Math.max(0, (node.buffer || 0) - uploaded);
+    node.flow.uploadRate = rate;
+  });
+}
+
+function productionRateForNode(node) {
+  if (!node.def.output || node.upload) return 0;
+  if (isProcessingNode(node) && !isCurrentCycleDone(node)) return 0;
+  const amount = Math.max(1, defaultOutputAmount(node.def));
+  return node.stats.rate * PRODUCTION_UNITS_PER_RATE * Math.max(1, amount / 18);
+}
+
+function transferRateForNode(node) {
+  return node.stats.rate * TRANSFER_UNITS_PER_RATE * (1 + (node.level - 1) * 0.12);
+}
+
+function uploadRateForNode(node) {
+  return node.stats.rate * UPLOAD_UNITS_PER_RATE;
 }
 
 function advanceUploadProgress(node, dt, reachable, running) {
@@ -2009,9 +2439,10 @@ function advanceUploadProgress(node, dt, reachable, running) {
     node.upload.sourceId = null;
     node.upload.version = 0;
     node.upload.amount = 0;
-    node.upload.uploaded = approach(node.upload.uploaded, 0, dt * 0.012);
+    node.upload.uploaded = approach(node.upload.uploaded, 0, dt * FAST_PROGRESS_RESET_RATE);
     node.upload.complete = false;
-    node.progress = approach(node.progress, 0, dt * 0.08);
+    node.upload.hold = 0;
+    node.progress = approach(node.progress, 0, dt * FAST_PROGRESS_RESET_RATE);
     return;
   }
 
@@ -2022,15 +2453,30 @@ function advanceUploadProgress(node, dt, reachable, running) {
     node.upload.amount = signal.amount;
     node.upload.uploaded = 0;
     node.upload.complete = false;
+    node.upload.hold = 0;
+  }
+
+  if (node.upload.complete) {
+    node.upload.hold += dt;
+    if (node.upload.hold >= PROCESS_RELEASE_MS) {
+      node.upload.uploaded = 0;
+      node.upload.complete = false;
+      node.upload.hold = 0;
+      node.progress = 0;
+      return;
+    }
+    node.progress = 100;
+    return;
   }
 
   if (!node.upload.complete) {
     node.upload.uploaded = Math.min(
       node.upload.amount,
-      node.upload.uploaded + (dt / 1000) * node.stats.rate * UPLOAD_UNITS_PER_RATE,
+      node.upload.uploaded + (dt / 1000) * uploadRateForNode(node),
     );
     if (node.upload.uploaded >= node.upload.amount) {
       node.upload.complete = true;
+      node.upload.hold = 0;
       node.outputVersion += 1;
       node.completedPulseUntil = performance.now() + COMPLETION_FLASH_MS;
       simTick();
@@ -2078,7 +2524,7 @@ function outputSignal(node, visited = new Set()) {
   return {
     ready: true,
     version: node.outputVersion || 1,
-    amount: Math.max(1, node.outputAmount || defaultOutputAmount(node.def)),
+    amount: Math.max(1, defaultOutputAmount(node.def)),
   };
 }
 
@@ -2158,6 +2604,7 @@ function updateAll(rates = {}) {
   els.connCount.textContent = state.connections.length;
   els.fundsDisplay.textContent = `$${formatShort(state.funds)}`;
   els.fundsRate.textContent = rates.moneyRate ? `+${formatShort(rates.moneyRate)}/s` : "+0/s";
+  refreshPaletteAffordability();
   renderConnections();
   if (state.selected) {
     const node = state.nodes.get(state.selected);
@@ -2168,6 +2615,10 @@ function updateAll(rates = {}) {
 function setStatus(message, type) {
   els.statusMsg.textContent = message;
   els.statusMsg.style.color = type === "ok" ? colors.ok : type === "warn" ? colors.tools : "";
+}
+
+function formatRate(value) {
+  return `${formatShort(value)}/s`;
 }
 
 function formatShort(value) {
