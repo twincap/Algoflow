@@ -3,7 +3,6 @@ const categories = [
   { id: "process", label: "처리" },
   { id: "hardware", label: "하드웨어" },
   { id: "output", label: "출력" },
-  { id: "tools", label: "도구" },
 ];
 
 const colors = {
@@ -35,8 +34,8 @@ const RAW_BASE_MAX_VALUE = 1_000;
 const SORT_COUNT_CAP = 140;
 const GRAPH_COUNT_CAP = 48;
 const BST_COUNT_CAP = 63;
-const BOARD_WIDTH = 2400;
-const BOARD_HEIGHT = 1600;
+const BOARD_WIDTH = 5200;
+const BOARD_HEIGHT = 3400;
 const MIN_BOARD_ZOOM = 0.45;
 const MAX_BOARD_ZOOM = 1.8;
 const PROCESS_RELEASE_MS = 360;
@@ -116,62 +115,6 @@ const nodeDefs = {
     accepts: ["raw", "ANY"],
     rows: ["수집", "텍스트 파일", "인코딩"],
     baseRate: 2.4,
-  },
-  Split: {
-    key: "Split",
-    category: "tools",
-    label: "분배기",
-    kind: "router",
-    glyph: "SP",
-    color: colors.tools,
-    cost: 420,
-    input: true,
-    output: "same",
-    accepts: ["ANY"],
-    rows: ["분기", "2개 라인", "무손실"],
-    baseRate: 1.3,
-  },
-  Duplicate: {
-    key: "Duplicate",
-    category: "tools",
-    label: "복제기",
-    kind: "router",
-    glyph: "DU",
-    color: colors.tools,
-    cost: 520,
-    input: true,
-    output: "same",
-    accepts: ["ANY"],
-    rows: ["복사", "2개 출력", "버퍼"],
-    baseRate: 1.15,
-  },
-  Merge: {
-    key: "Merge",
-    category: "tools",
-    label: "병합기",
-    kind: "router",
-    glyph: "FO",
-    color: "#b9c7dd",
-    cost: 380,
-    input: true,
-    output: "same",
-    accepts: ["ANY"],
-    rows: ["병합", "순서 유지", "압축"],
-    baseRate: 1,
-  },
-  Filter: {
-    key: "Filter",
-    category: "tools",
-    label: "필터",
-    kind: "router",
-    glyph: "FI",
-    color: "#f0ce75",
-    cost: 360,
-    input: true,
-    output: "same",
-    accepts: ["ANY"],
-    rows: ["선별", "규칙 세트", "정리"],
-    baseRate: 1.2,
   },
   BubbleSort: {
     key: "BubbleSort",
@@ -401,7 +344,7 @@ const nodeDefs = {
 
 const challenges = [
   { id: "first-pipeline", title: "첫 파이프라인", text: "원본 입력을 데이터 노드와 업로더까지 연결하세요.", done: false },
-  { id: "parallel", title: "병렬 경로", text: "분배기를 사용해 알고리즘 노드 2개를 같은 네트워크에 연결하세요.", done: false },
+  { id: "parallel", title: "병렬 경로", text: "하나의 출력 노드를 알고리즘 노드 2개에 연결하세요.", done: false },
   { id: "accelerated", title: "가속 연산", text: "알고리즘 노드에 하드웨어를 연결하세요.", done: false },
   { id: "busy-lab", title: "바쁜 연구소", text: "8개 이상의 노드가 연결된 네트워크를 구성하세요.", done: false },
 ];
@@ -612,8 +555,7 @@ function setCategory(categoryId) {
 function renderPalette() {
   const defs = Object.values(nodeDefs).filter((def) => (
     def.category === state.activeCategory &&
-    def.key !== "RawInput" &&
-    (state.activeCategory !== "tools" || ["Split", "Merge"].includes(def.key))
+    def.key !== "RawInput"
   ));
   els.nodePalette.innerHTML = "";
   els.libraryCount.textContent = defs.length;
@@ -1896,11 +1838,13 @@ function checkChallenges() {
   const hasOutput = [...reachable].some((id) => state.nodes.get(id)?.def.kind === "output");
   const hasData = [...reachable].some((id) => state.nodes.get(id)?.def.kind === "downloader");
   const algoNodes = [...reachable].filter((id) => state.nodes.get(id)?.def.kind === "algorithm");
-  const hasSplitter = [...reachable].some((id) => state.nodes.get(id)?.key === "Split");
   const hasAccelerated = state.connections.some((conn) => conn.valid && conn.isHardware && reachable.has(conn.toId));
+  const parallelOutput = [...reachable].some((id) => (
+    state.connections.filter((conn) => conn.valid && !conn.isHardware && conn.fromId === id).length >= 2
+  ));
 
   completeChallenge("first-pipeline", hasOutput && hasData);
-  completeChallenge("parallel", hasSplitter && algoNodes.length >= 2);
+  completeChallenge("parallel", parallelOutput && algoNodes.length >= 2);
   completeChallenge("accelerated", hasAccelerated);
   completeChallenge("busy-lab", reachable.size >= 8);
 }
