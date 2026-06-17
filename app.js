@@ -31,8 +31,10 @@ const SORT_KEYS = new Set([
 ]);
 const STRING_SORT_KEYS = new Set(["QuickSort", "RadixSort"]);
 const TRAVERSAL_KEYS = new Set(["BFS", "DFS", "BSTSearch"]);
-const MAX_NODE_LEVEL = 10;
-const RAW_BASE_MAX_VALUE = 10_000;
+const RAW_BASE_MAX_VALUE = 1_000;
+const SORT_COUNT_CAP = 140;
+const GRAPH_COUNT_CAP = 48;
+const BST_COUNT_CAP = 63;
 const BOARD_WIDTH = 2400;
 const BOARD_HEIGHT = 1600;
 const MIN_BOARD_ZOOM = 0.45;
@@ -399,7 +401,7 @@ const nodeDefs = {
 
 const challenges = [
   { id: "first-pipeline", title: "첫 파이프라인", text: "원본 입력을 데이터 노드와 업로더까지 연결하세요.", done: false },
-  { id: "parallel", title: "병렬 경로", text: "복제기를 사용해 알고리즘 노드 2개를 같은 네트워크에 연결하세요.", done: false },
+  { id: "parallel", title: "병렬 경로", text: "분배기를 사용해 알고리즘 노드 2개를 같은 네트워크에 연결하세요.", done: false },
   { id: "accelerated", title: "가속 연산", text: "알고리즘 노드에 하드웨어를 연결하세요.", done: false },
   { id: "busy-lab", title: "바쁜 연구소", text: "8개 이상의 노드가 연결된 네트워크를 구성하세요.", done: false },
 ];
@@ -447,23 +449,27 @@ const state = {
 };
 
 function rawInputLevel() {
-  return clamp(state.nodes.get("n1")?.level || 1, 1, MAX_NODE_LEVEL);
+  return Math.max(1, state.nodes.get("n1")?.level || 1);
 }
 
 function rawDataScale() {
   const level = rawInputLevel();
+  const upgradeLevel = Math.max(0, level - 1);
+  const digitPower = 3 + Math.floor(upgradeLevel / 2);
   return {
     level,
-    sortCount: 16 + level * 6,
-    maxValue: RAW_BASE_MAX_VALUE * Math.pow(10, level - 1),
-    graphCount: 6 + level * 2,
-    bstCount: 5 + level * 2,
-    stringLength: level + 1,
+    upgradeLevel,
+    maxDigitPower: digitPower,
+    sortCount: Math.min(SORT_COUNT_CAP, 16 + level * 6),
+    maxValue: Math.min(Number.MAX_SAFE_INTEGER, RAW_BASE_MAX_VALUE * Math.pow(10, Math.floor(upgradeLevel / 2))),
+    graphCount: Math.min(GRAPH_COUNT_CAP, 6 + level * 2),
+    bstCount: Math.min(BST_COUNT_CAP, 5 + level * 2),
+    stringLength: Math.min(14, level + 1),
   };
 }
 
 function sortScaleKey(mode, scale = rawDataScale()) {
-  return `${mode}:${scale.sortCount}:${scale.maxValue}:${scale.stringLength}`;
+  return `${mode}:${scale.sortCount}:${scale.maxDigitPower}:${scale.stringLength}`;
 }
 
 function traversalScaleKey(key, scale = rawDataScale()) {
@@ -604,7 +610,11 @@ function setCategory(categoryId) {
 }
 
 function renderPalette() {
-  const defs = Object.values(nodeDefs).filter((def) => def.category === state.activeCategory && def.key !== "RawInput");
+  const defs = Object.values(nodeDefs).filter((def) => (
+    def.category === state.activeCategory &&
+    def.key !== "RawInput" &&
+    (state.activeCategory !== "tools" || ["Split", "Merge"].includes(def.key))
+  ));
   els.nodePalette.innerHTML = "";
   els.libraryCount.textContent = defs.length;
 
@@ -765,7 +775,9 @@ function isOpenSpot(x, y, height) {
 }
 
 function visualNodeHeight(key) {
+  if (key === "BSTSearch") return 284;
   if (SORT_KEYS.has(key) || TRAVERSAL_KEYS.has(key)) return 252;
+  if (key === "Split" || key === "Merge") return 232;
   return nodeDefs[key]?.output ? 214 : 176;
 }
 
@@ -817,12 +829,14 @@ function addNode(key, x, y, options = {}) {
     sort: SORT_KEYS.has(key) ? createSortState(key) : null,
     traversal: TRAVERSAL_KEYS.has(key) ? createTraversalState(key) : null,
     upload: def.kind === "output" ? createUploadState() : null,
+    splitWeights: key === "Split" ? {} : null,
     el: null,
   };
 
   node.el = renderNode(node);
   state.nodes.set(id, node);
   els.canvas.appendChild(node.el);
+  refreshToolControls(node);
   if (node.sort) refreshSortViz(node);
   if (node.traversal) refreshTraversalViz(node);
   selectNode(id);
@@ -842,7 +856,7 @@ function renderNode(node) {
   el.style.zIndex = node.z;
   el.style.setProperty("--node-color", def.color);
 
-  const inputPort = def.input ? `<span class="node-port in" data-port="in" title="입력"></span>` : "";
+  const inputPort = renderInputPorts(node);
   const hwPort = def.hwInput ? `<span class="node-port hw" data-port="hw" title="하드웨어 입력"></span>` : "";
   const rows = def.rows.map((row, index) => {
     const rowData = nodeRowData(node, row, index);
@@ -858,6 +872,7 @@ function renderNode(node) {
   const traversalViz = node.traversal
     ? `<div class="graph-viz ${node.key === "BSTSearch" ? "bst-viz" : "network-viz"}" aria-label="탐색 시각화"></div>`
     : "";
+  const toolControls = isToolConfigNode(node) ? `<div class="tool-controls" aria-label="도구 설정"></div>` : "";
   const outputArtifact = def.output ? renderOutputArtifact(node) : "";
   const flowSummary = `<div class="node-flow" aria-label="데이터 흐름"></div>`;
 
@@ -881,6 +896,7 @@ function renderNode(node) {
       ${rows}
       ${sortViz}
       ${traversalViz}
+      ${toolControls}
       ${outputArtifact}
       ${flowSummary}
       ${progressBar}
@@ -888,15 +904,105 @@ function renderNode(node) {
   `;
 
   el.addEventListener("pointerdown", (event) => handleNodePointerDown(event, node.id));
-  el.addEventListener("click", (event) => handleNodeClick(event, node.id));
+  el.addEventListener("click", (event) => {
+    const control = event.target.closest("[data-tool-action]");
+    if (control) {
+      handleToolControlClick(event, node.id, control);
+      return;
+    }
+    handleNodeClick(event, node.id);
+  });
   el.addEventListener("contextmenu", (event) => showContextMenu(event, node.id));
-  el.querySelectorAll(".node-port").forEach((port) => {
-    port.style.setProperty("--port-color", port.dataset.port === "hw" ? colors.hardware : def.color);
+  bindNodePorts(node, el);
+  refreshToolControls(node);
+
+  return el;
+}
+
+function renderInputPorts(node) {
+  if (!node.def.input) return "";
+  if (node.key !== "Merge") return `<span class="node-port in" data-port="in" title="입력"></span>`;
+  return mergeInputPortNames(node).map((portName, index) => {
+    const connection = state.connections.find((conn) => conn.valid && !conn.isHardware && conn.toId === node.id && conn.toPort === portName);
+    const portColor = connection ? connectionColor(connection.type, false) : node.def.color;
+    const title = connection ? `입력 ${index + 1}` : `입력 ${index + 1} 추가`;
+    return `<span class="node-port in merge-in" data-port="${portName}" title="${title}" style="--port-y:${58 + index * 32}px;--port-color:${portColor}"></span>`;
+  }).join("");
+}
+
+function bindNodePorts(node, root = node.el) {
+  root?.querySelectorAll(".node-port").forEach((port) => {
+    if (!port.style.getPropertyValue("--port-color")) {
+      port.style.setProperty("--port-color", port.dataset.port === "hw" ? colors.hardware : node.def.color);
+    }
+    if (port.dataset.bound === "true") return;
+    port.dataset.bound = "true";
     port.addEventListener("pointerdown", (event) => event.stopPropagation());
     port.addEventListener("click", (event) => handlePortClick(event, node.id, port.dataset.port));
   });
+}
 
-  return el;
+function refreshInputPorts(node) {
+  if (node.key !== "Merge") return;
+  node.el.querySelectorAll(".node-port.in").forEach((port) => port.remove());
+  node.el.insertAdjacentHTML("afterbegin", renderInputPorts(node));
+  bindNodePorts(node);
+}
+
+function isToolConfigNode(node) {
+  return node.key === "Split" || node.key === "Merge";
+}
+
+function refreshToolControls(node) {
+  const panel = node.el?.querySelector(".tool-controls");
+  if (!panel) return;
+  if (node.key === "Split") panel.innerHTML = renderSplitControls(node);
+  else if (node.key === "Merge") panel.innerHTML = renderMergeControls(node);
+}
+
+function renderSplitControls(node) {
+  const outputs = outgoingDataConnections(node.id);
+  if (!outputs.length) return `<div class="tool-empty">출력 연결 대기</div>`;
+  return outputs.map((conn, index) => {
+    const target = state.nodes.get(conn.toId);
+    return `
+      <div class="tool-row">
+        <span class="tool-index">${index + 1}</span>
+        <span class="tool-name">${target?.def.label || "출력"}</span>
+        <button type="button" data-tool-action="ratio-down" data-conn-id="${conn.id}" title="비율 감소">-</button>
+        <strong>${splitConnectionWeight(conn)}</strong>
+        <button type="button" data-tool-action="ratio-up" data-conn-id="${conn.id}" title="비율 증가">+</button>
+      </div>
+    `;
+  }).join("");
+}
+
+function renderMergeControls(node) {
+  const inputs = mergeIncomingConnections(node.id);
+  if (!inputs.length) return `<div class="tool-empty">같은 타입 입력 대기</div>`;
+  const rows = inputs.map((conn, index) => {
+    const source = state.nodes.get(conn.fromId);
+    return `
+      <div class="tool-row merge-row">
+        <span class="tool-index">${index + 1}</span>
+        <span class="tool-name">${source?.def.label || "입력"}</span>
+        <strong>${typeLabel(conn.type)}</strong>
+      </div>
+    `;
+  }).join("");
+  return `${rows}<div class="tool-empty">다음 입력 포트 준비</div>`;
+}
+
+function handleToolControlClick(event, nodeId, control) {
+  event.stopPropagation();
+  const node = state.nodes.get(nodeId);
+  if (!node || node.key !== "Split") return;
+  const conn = state.connections.find((item) => item.id === control.dataset.connId);
+  if (!conn || conn.fromId !== node.id) return;
+  const direction = control.dataset.toolAction === "ratio-up" ? 1 : -1;
+  conn.weight = clamp(splitConnectionWeight(conn) + direction, 1, 99);
+  refreshToolControls(node);
+  setStatus(`${node.def.label} 비율 ${conn.weight}로 조정.`, "ok");
 }
 
 function renderOutputArtifact(node) {
@@ -1057,6 +1163,7 @@ function refreshNode(node) {
   node.el.style.top = `${node.y}px`;
   node.el.style.zIndex = node.z;
   node.el.style.setProperty("--node-color", node.def.color);
+  refreshInputPorts(node);
 
   node.el.querySelectorAll(".node-row").forEach((rowEl, index) => {
     const rowData = nodeRowData(node, node.def.rows[index] || "", index);
@@ -1071,6 +1178,7 @@ function refreshNode(node) {
   if (level) level.textContent = `L${node.level}`;
   if (node.sort) refreshSortViz(node);
   if (node.traversal) refreshTraversalViz(node);
+  refreshToolControls(node);
   refreshOutputArtifact(node);
 }
 
@@ -1233,14 +1341,59 @@ function cancelConnection(showMessage = true) {
   if (showMessage) setStatus("연결이 취소되었습니다.", "warn");
 }
 
+function isDataInputPort(portName) {
+  return portName === "in" || /^in\d+$/.test(portName || "");
+}
+
+function portOrder(portName) {
+  if (portName === "in") return 1;
+  return Number(portName?.slice(2)) || 1;
+}
+
+function dataIncomingConnections(nodeId) {
+  return state.connections
+    .filter((conn) => conn.valid && !conn.isHardware && conn.toId === nodeId)
+    .sort((a, b) => portOrder(a.toPort) - portOrder(b.toPort));
+}
+
+function outgoingDataConnections(nodeId) {
+  return state.connections.filter((conn) => conn.valid && !conn.isHardware && conn.fromId === nodeId);
+}
+
+function mergeIncomingConnections(nodeId) {
+  return dataIncomingConnections(nodeId);
+}
+
+function mergeInputPortNames(node) {
+  const used = mergeIncomingConnections(node.id).map((conn) => conn.toPort);
+  const maxIndex = used.reduce((max, name) => Math.max(max, portOrder(name)), 0);
+  const nextName = maxIndex <= 0 ? "in" : `in${maxIndex + 1}`;
+  return [...used, nextName];
+}
+
+function mergeExistingInputType(nodeId) {
+  return mergeIncomingConnections(nodeId)[0]?.type || null;
+}
+
+function mergePortOccupied(nodeId, portName) {
+  return state.connections.some((conn) => conn.valid && !conn.isHardware && conn.toId === nodeId && conn.toPort === portName);
+}
+
 function createConnection(fromId, fromPort, toId, toPort) {
   const fromNode = state.nodes.get(fromId);
   const toNode = state.nodes.get(toId);
   const isHardware = fromNode.def.outputKind === "hardware";
   const outputType = getOutputType(fromNode);
-  const valid = isHardware
+  let valid = isHardware
     ? toPort === "hw" && Boolean(toNode.def.hwInput)
-    : toPort === "in" && acceptsType(toNode.def, outputType);
+    : isDataInputPort(toPort) && acceptsType(toNode.def, outputType);
+
+  if (valid && !isHardware && toNode.key === "Merge") {
+    const existingType = mergeExistingInputType(toId);
+    valid = !mergePortOccupied(toId, toPort) && (!existingType || existingType === outputType);
+  } else if (valid && !isHardware && toPort !== "in") {
+    valid = false;
+  }
 
   return {
     id: `${fromId}-${toId}-${Date.now()}-${Math.random().toString(16).slice(2)}`,
@@ -1250,9 +1403,35 @@ function createConnection(fromId, fromPort, toId, toPort) {
     toPort,
     type: outputType,
     isHardware,
+    weight: fromNode.key === "Split" && !isHardware ? 1 : undefined,
     valid,
     color: valid ? connectionColor(outputType, isHardware) : colors.error,
   };
+}
+
+function syncConnectionTypes() {
+  state.connections.forEach((conn) => {
+    const source = state.nodes.get(conn.fromId);
+    if (!source || conn.isHardware) return;
+    const type = getOutputType(source);
+    conn.type = type;
+    conn.color = conn.valid ? connectionColor(type, false) : colors.error;
+  });
+  state.nodes.forEach((node) => {
+    if (node.key !== "Merge") return;
+    let expectedType = null;
+    const usedPorts = new Set();
+    mergeIncomingConnections(node.id).forEach((conn) => {
+      const sameType = !expectedType || conn.type === expectedType;
+      const openPort = !usedPorts.has(conn.toPort);
+      conn.valid = acceptsType(node.def, conn.type) && sameType && openPort;
+      if (conn.valid) {
+        expectedType = expectedType || conn.type;
+        usedPorts.add(conn.toPort);
+      }
+      conn.color = conn.valid ? connectionColor(conn.type, false) : colors.error;
+    });
+  });
 }
 
 function acceptsType(def, outputType) {
@@ -1262,7 +1441,7 @@ function acceptsType(def, outputType) {
 
 function getOutputType(node) {
   if (node.def.output === "same") {
-    const upstream = state.connections.find((conn) => conn.toId === node.id && conn.valid && !conn.isHardware);
+    const upstream = dataIncomingConnections(node.id)[0];
     return upstream ? upstream.type : "ANY";
   }
   return node.def.output;
@@ -1482,9 +1661,8 @@ function renderInspector(node) {
   els.nodeInfo.className = "node-info";
   const inbound = state.connections.filter((conn) => conn.toId === node.id && conn.valid).length;
   const outbound = state.connections.filter((conn) => conn.fromId === node.id && conn.valid).length;
-  const canUpgrade = node.level < MAX_NODE_LEVEL;
   const upgradeCost = upgradePrice(node);
-  const upgradeLabel = canUpgrade ? `업그레이드 $${formatShort(upgradeCost)}` : "최대 레벨";
+  const canAffordUpgrade = state.funds >= upgradeCost;
   const primaryFlowLabel = node.upload ? "업로드" : "생산";
   const primaryFlowRate = node.upload ? node.flow.uploadRate : node.flow.productionRate;
   els.nodeInfo.innerHTML = `
@@ -1497,14 +1675,14 @@ function renderInspector(node) {
       <div><span class="metric-label">적재</span><b>${formatShort(node.buffer || 0)}</b></div>
     </div>
     <div class="upgrade-list">
-      <button class="upgrade-button" id="upgrade-selected" ${canUpgrade ? "" : "disabled"}>
-        ${upgradeLabel}
+      <button class="upgrade-button" id="upgrade-selected" ${canAffordUpgrade ? "" : "disabled"}>
+        업그레이드 $${formatShort(upgradeCost)}
       </button>
     </div>
   `;
   const upgradeButton = document.getElementById("upgrade-selected");
   if (upgradeButton) {
-    upgradeButton.disabled = !canUpgrade || state.funds < upgradeCost;
+    upgradeButton.disabled = !canAffordUpgrade;
     upgradeButton.addEventListener("click", () => upgradeNode(node.id));
   }
 }
@@ -1518,7 +1696,7 @@ function upgradeNode(id) {
   const node = state.nodes.get(id);
   if (!node) return;
   const cost = upgradePrice(node);
-  if (state.funds < cost || node.level >= MAX_NODE_LEVEL) return;
+  if (state.funds < cost) return;
   state.funds -= cost;
   node.level += 1;
   node.stats.rate = node.def.baseRate * (1 + (node.level - 1) * 0.32);
@@ -1581,6 +1759,7 @@ function startGameLoop() {
 }
 
 function simTick() {
+  syncConnectionTypes();
   const invalid = state.connections.filter((conn) => !conn.valid);
   if (invalid.length) {
     setStatus("호환되지 않는 연결이 있습니다.", "warn");
@@ -1706,7 +1885,9 @@ function hardwareBoost(nodeId) {
   return hwConnections.reduce((boost, conn) => {
     const hw = state.nodes.get(conn.fromId);
     const levelBoost = hw ? 1 + (hw.level - 1) * 0.18 : 1;
-    return boost * (hw ? hw.def.baseRate * levelBoost : 1);
+    const fanout = Math.max(1, state.connections.filter((item) => item.valid && item.isHardware && item.fromId === conn.fromId).length);
+    const totalBoost = hw ? hw.def.baseRate * levelBoost : 1;
+    return boost * (1 + Math.max(0, totalBoost - 1) / fanout);
   }, 1);
 }
 
@@ -1715,11 +1896,11 @@ function checkChallenges() {
   const hasOutput = [...reachable].some((id) => state.nodes.get(id)?.def.kind === "output");
   const hasData = [...reachable].some((id) => state.nodes.get(id)?.def.kind === "downloader");
   const algoNodes = [...reachable].filter((id) => state.nodes.get(id)?.def.kind === "algorithm");
-  const hasDuplicator = [...reachable].some((id) => state.nodes.get(id)?.key === "Duplicate");
+  const hasSplitter = [...reachable].some((id) => state.nodes.get(id)?.key === "Split");
   const hasAccelerated = state.connections.some((conn) => conn.valid && conn.isHardware && reachable.has(conn.toId));
 
   completeChallenge("first-pipeline", hasOutput && hasData);
-  completeChallenge("parallel", hasDuplicator && algoNodes.length >= 2);
+  completeChallenge("parallel", hasSplitter && algoNodes.length >= 2);
   completeChallenge("accelerated", hasAccelerated);
   completeChallenge("busy-lab", reachable.size >= 8);
 }
@@ -1813,9 +1994,9 @@ function refreshNodeFlow(node) {
   if (!flow) return;
   const buffer = Math.max(0, node.buffer || 0);
   if (node.upload) {
-    flow.textContent = `업 ${formatRate(node.flow.uploadRate)} · 유 ${formatRate(node.flow.inboundRate)} · 적 ${formatShort(buffer)}`;
+    flow.textContent = `업로드 ${formatRate(node.flow.uploadRate)} · 유입 ${formatRate(node.flow.inboundRate)} · ${formatShort(buffer)}`;
   } else {
-    flow.textContent = `생 ${formatRate(node.flow.productionRate)} · 이 ${formatRate(node.flow.transferRate)} · 적 ${formatShort(buffer)}`;
+    flow.textContent = `생산 ${formatRate(node.flow.productionRate)} · 속도 ${formatRate(node.flow.transferRate)} · ${formatShort(buffer)}`;
   }
   flow.classList.toggle("loaded", buffer >= Math.max(8, defaultOutputAmount(node.def)));
 }
@@ -2327,6 +2508,9 @@ function createBstGraph(count) {
   const nodes = [];
   const edges = [];
   let rootId = 0;
+  const levels = Math.max(1, Math.ceil(Math.log2(count + 1)));
+  const yStep = levels > 5 ? 16 : levels > 4 ? 18 : 22;
+  const top = 12;
 
   function build(start, end, depth, xMin, xMax, parentId = null) {
     if (start > end) return;
@@ -2335,7 +2519,7 @@ function createBstGraph(count) {
     nodes.push({
       id,
       x: (xMin + xMax) / 2,
-      y: 14 + depth * 23,
+      y: top + depth * yStep,
     });
     if (parentId !== null) edges.push([parentId, id]);
     build(start, id - 1, depth + 1, xMin, (xMin + xMax) / 2, id);
@@ -2343,10 +2527,11 @@ function createBstGraph(count) {
   }
 
   build(0, count - 1, 0, 8, 160);
+  const height = top * 2 + Math.max(1, levels - 1) * yStep;
   return {
-    viewBox: "0 0 168 104",
-    radius: count > 11 ? 5.8 : 7.2,
-    labelOffset: 2.8,
+    viewBox: `0 0 168 ${height}`,
+    radius: count > 31 ? 4.2 : count > 15 ? 5.1 : 6.5,
+    labelOffset: count > 31 ? 1.9 : 2.6,
     nodes: nodes.sort((a, b) => a.id - b.id),
     edges,
     rootId,
@@ -2579,19 +2764,32 @@ function advanceDataFlow(dt, reachable, active) {
     }
   });
 
+  const outgoingGroups = new Map();
   state.connections
     .filter((conn) => conn.valid && !conn.isHardware && canTransmitConnection(conn, reachable))
     .forEach((conn) => {
-      const source = state.nodes.get(conn.fromId);
-      const target = state.nodes.get(conn.toId);
-      if (!source || !target) return;
-      const rate = transferRateForNode(source);
-      const moved = Math.min(source.buffer || 0, rate * seconds);
-      source.buffer = Math.max(0, (source.buffer || 0) - moved);
-      target.buffer = Math.max(0, (target.buffer || 0) + moved);
-      source.flow.transferRate += rate;
-      target.flow.inboundRate += moved / Math.max(seconds, 0.001);
+      if (!outgoingGroups.has(conn.fromId)) outgoingGroups.set(conn.fromId, []);
+      outgoingGroups.get(conn.fromId).push(conn);
     });
+
+  outgoingGroups.forEach((connections, fromId) => {
+    const source = state.nodes.get(fromId);
+    if (!source || !connections.length) return;
+    const capacities = connectionTransferCapacities(source, connections);
+    const totalCapacity = capacities.reduce((sum, rate) => sum + rate, 0);
+    if (totalCapacity <= 0) return;
+    const movedTotal = Math.min(source.buffer || 0, totalCapacity * seconds);
+    source.buffer = Math.max(0, (source.buffer || 0) - movedTotal);
+    connections.forEach((conn, index) => {
+      const target = state.nodes.get(conn.toId);
+      if (!target) return;
+      const moved = movedTotal * (capacities[index] / totalCapacity);
+      target.buffer = Math.max(0, (target.buffer || 0) + moved);
+      const actualRate = moved / Math.max(seconds, 0.001);
+      source.flow.transferRate += actualRate;
+      target.flow.inboundRate += actualRate;
+    });
+  });
 
   state.nodes.forEach((node) => {
     if (!node.upload || !active || !reachable.has(node.id)) return;
@@ -2600,6 +2798,21 @@ function advanceDataFlow(dt, reachable, active) {
     node.buffer = Math.max(0, (node.buffer || 0) - uploaded);
     node.flow.uploadRate = rate;
   });
+}
+
+function connectionTransferCapacities(source, connections) {
+  const totalRate = transferRateForNode(source);
+  if (source.key !== "Split") {
+    const evenRate = totalRate / Math.max(1, connections.length);
+    return connections.map(() => evenRate);
+  }
+  const weights = connections.map(splitConnectionWeight);
+  const totalWeight = weights.reduce((sum, weight) => sum + weight, 0) || 1;
+  return weights.map((weight) => totalRate * (weight / totalWeight));
+}
+
+function splitConnectionWeight(conn) {
+  return clamp(Number(conn.weight) || 1, 1, 99);
 }
 
 function productionRateForNode(node) {
@@ -2699,8 +2912,23 @@ function outputSignal(node, visited = new Set()) {
       amount: Math.max(1, node.outputAmount),
     };
   }
+  if (node.key === "Merge") {
+    const signals = mergeIncomingConnections(node.id)
+      .map((conn) => {
+        const source = state.nodes.get(conn.fromId);
+        const signal = outputSignal(source, visited);
+        return signal.ready ? signal : null;
+      })
+      .filter(Boolean);
+    if (!signals.length) return { ready: true, version: 1, amount: Math.max(1, node.outputAmount) };
+    return {
+      ready: true,
+      version: signals.reduce((max, signal) => Math.max(max, signal.version), 1),
+      amount: signals.reduce((sum, signal) => sum + Math.max(1, signal.amount), 0),
+    };
+  }
   if (node.def.kind === "router") {
-    const upstream = state.connections.find((conn) => conn.valid && !conn.isHardware && conn.toId === node.id);
+    const upstream = dataIncomingConnections(node.id)[0];
     const source = upstream ? state.nodes.get(upstream.fromId) : null;
     const signal = outputSignal(source, visited);
     return signal.ready ? signal : { ready: true, version: 1, amount: Math.max(1, node.outputAmount) };

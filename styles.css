@@ -383,6 +383,7 @@ button {
 
 .node-palette {
   display: grid;
+  align-content: start;
   flex: 1 1 auto;
   gap: 7px;
   min-height: 0;
@@ -701,6 +702,69 @@ button {
   opacity: 0.68;
 }
 
+.tool-controls {
+  display: grid;
+  gap: 5px;
+  padding: 5px;
+  border: 1px solid rgba(151, 174, 207, 0.12);
+  border-radius: 5px;
+  background: rgba(7, 13, 23, 0.35);
+}
+
+.tool-row {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) 18px 20px 18px;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 8px;
+}
+
+.tool-row.merge-row {
+  grid-template-columns: 18px minmax(0, 1fr) minmax(0, max-content);
+}
+
+.tool-index {
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  background: rgba(220, 234, 255, 0.06);
+  color: var(--text);
+}
+
+.tool-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tool-row strong {
+  color: var(--text);
+  text-align: center;
+}
+
+.tool-row button {
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border-radius: 4px;
+  font-size: 11px;
+  line-height: 1;
+}
+
+.tool-empty {
+  overflow: hidden;
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 8px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .output-icon {
   display: grid;
   place-items: center;
@@ -870,7 +934,7 @@ button {
 }
 
 .graph-viz.bst-viz {
-  height: 84px;
+  height: 112px;
 }
 
 .graph-viz svg {
@@ -939,6 +1003,10 @@ button {
 .node-port.in {
   left: -5px;
   top: 58px;
+}
+
+.node-port.in.merge-in {
+  top: var(--port-y, 58px);
 }
 
 .node-port.out {
