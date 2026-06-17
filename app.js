@@ -30,7 +30,8 @@ const SORT_KEYS = new Set([
 ]);
 const STRING_SORT_KEYS = new Set(["QuickSort", "RadixSort"]);
 const TRAVERSAL_KEYS = new Set(["BFS", "DFS", "BSTSearch"]);
-const RAW_BASE_MAX_VALUE = 1_000;
+const RAW_BASE_MAX_DIGITS = 4;
+const RAW_MAX_DIGITS = 15;
 const SORT_COUNT_CAP = 140;
 const GRAPH_COUNT_CAP = 48;
 const BST_COUNT_CAP = 63;
@@ -368,12 +369,12 @@ function rawInputLevel() {
 function rawDataScale() {
   const level = rawInputLevel();
   const upgradeLevel = Math.max(0, level - 1);
-  const digitPower = Math.min(15, 3 + upgradeLevel);
-  const maxValue = Math.min(Number.MAX_SAFE_INTEGER, RAW_BASE_MAX_VALUE * Math.pow(10, upgradeLevel));
+  const maxDigits = Math.min(RAW_MAX_DIGITS, RAW_BASE_MAX_DIGITS + upgradeLevel);
+  const maxValue = Math.min(Number.MAX_SAFE_INTEGER, Math.pow(10, maxDigits) - 1);
   return {
     level,
     upgradeLevel,
-    maxDigitPower: digitPower,
+    maxDigits,
     sortCount: Math.min(SORT_COUNT_CAP, 16 + level * 6),
     maxValue,
     graphCount: Math.min(GRAPH_COUNT_CAP, 6 + level * 2),
@@ -383,7 +384,7 @@ function rawDataScale() {
 }
 
 function sortScaleKey(mode, scale = rawDataScale()) {
-  return `${mode}:${scale.sortCount}:${scale.maxDigitPower}:${scale.stringLength}`;
+  return `${mode}:${scale.sortCount}:${scale.maxDigits}:${scale.stringLength}`;
 }
 
 function traversalScaleKey(key, scale = rawDataScale()) {
@@ -1904,7 +1905,7 @@ function createSortState(key, mode = "number") {
   const scale = rawDataScale();
   const source = mode === "string"
     ? createStringSortSource(scale.sortCount, scale.stringLength)
-    : createNumberSortSource(scale.sortCount, scale.maxValue);
+    : createNumberSortSource(scale.sortCount, scale.maxDigits);
   shuffle(source);
   const frames = buildSortFrames(key, source);
   const first = frames[0] || makeSortFrame(source);
@@ -1954,8 +1955,8 @@ function inputTypeForNode(node) {
   return upstream?.type || null;
 }
 
-function createNumberSortSource(count, maxValue) {
-  return randomUniqueNumbers(count, 1, maxValue);
+function createNumberSortSource(count, maxDigits) {
+  return randomDigitRangeNumbers(count, maxDigits);
 }
 
 function createStringSortSource(count, length) {
@@ -2379,14 +2380,12 @@ function refreshSortViz(node) {
   container.innerHTML = node.sort.values.map((value, index) => {
     const active = node.sort.highlight.includes(index);
     const sorted = node.sort.done || node.sort.sorted.includes(index);
-    const labelText = node.sort.mode === "string" ? String(value).slice(0, 1) : `${digitCount(value)}d`;
-    const label = `<span class="sort-bar-label">${labelText}</span>`;
-    return `<span class="sort-bar ${active ? "active" : ""} ${sorted ? "sorted" : ""}" style="height:${10 + (metrics[index] / max) * 30}px">${label}</span>`;
+    return `<span class="sort-bar ${active ? "active" : ""} ${sorted ? "sorted" : ""}" style="height:${10 + (metrics[index] / max) * 30}px"></span>`;
   }).join("");
 }
 
 function sortValueMetric(value) {
-  if (typeof value === "number") return value;
+  if (typeof value === "number") return Math.log10(Math.max(1, value)) + 1;
   if (typeof value === "string") return stringRadixCode(value, 0);
   return 1;
 }
@@ -2515,6 +2514,27 @@ function randomUniqueNumbers(count, min, max) {
   const values = new Set();
   while (values.size < count) values.add(randomInt(min, max));
   return [...values];
+}
+
+function randomDigitRangeNumbers(count, maxDigits) {
+  const safeMaxDigits = clamp(Math.floor(maxDigits) || RAW_BASE_MAX_DIGITS, 1, RAW_MAX_DIGITS);
+  const values = new Set();
+  for (let digits = 1; digits <= safeMaxDigits && values.size < count; digits += 1) {
+    values.add(randomNumberWithDigits(digits));
+  }
+  let guard = count * 80;
+  while (values.size < count && guard > 0) {
+    guard -= 1;
+    values.add(randomNumberWithDigits(randomInt(1, safeMaxDigits)));
+  }
+  while (values.size < count) values.add(randomInt(1, Math.pow(10, safeMaxDigits) - 1));
+  return [...values];
+}
+
+function randomNumberWithDigits(digits) {
+  const max = Math.min(Number.MAX_SAFE_INTEGER, Math.pow(10, digits) - 1);
+  const min = digits <= 1 ? 1 : Math.pow(10, digits - 1);
+  return randomInt(min, max);
 }
 
 function randomInt(min, max) {
