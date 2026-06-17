@@ -79,7 +79,6 @@ button {
 }
 
 .metric-stack,
-.quick-nav,
 .panel-surface,
 .context-menu,
 .viz-dialog {
@@ -183,17 +182,6 @@ button {
   box-shadow: 3px 3px 0 -1px currentColor;
 }
 
-.quick-nav {
-  display: flex;
-  align-items: center;
-  justify-self: center;
-  gap: 8px;
-  padding: 8px;
-  border-radius: 10px;
-  pointer-events: auto;
-}
-
-.icon-button,
 .dock-button,
 .category-tab,
 .palette-item,
@@ -206,22 +194,6 @@ button {
   transition: border-color 140ms ease, background 140ms ease, color 140ms ease, transform 140ms ease;
 }
 
-.icon-button {
-  display: grid;
-  place-items: center;
-  width: 42px;
-  height: 42px;
-  border-radius: 8px;
-}
-
-.icon-button.small {
-  width: 30px;
-  height: 30px;
-  font-family: var(--mono);
-  font-size: 12px;
-}
-
-.icon-button:hover,
 .dock-button:hover,
 .category-tab:hover,
 .palette-item:hover,
@@ -229,65 +201,6 @@ button {
 .context-menu button:hover {
   border-color: var(--line-strong);
   background: rgba(37, 54, 79, 0.95);
-}
-
-.icon-button.active {
-  color: var(--orange);
-  border-color: rgba(229, 155, 54, 0.5);
-  background: rgba(229, 155, 54, 0.12);
-}
-
-.home-mark {
-  position: relative;
-  width: 18px;
-  height: 15px;
-  color: currentColor;
-  border-radius: 3px 3px 2px 2px;
-  background: currentColor;
-}
-
-.home-mark::before {
-  content: "";
-  position: absolute;
-  top: -8px;
-  left: 1px;
-  width: 16px;
-  height: 16px;
-  background: currentColor;
-  transform: rotate(45deg);
-  border-radius: 2px;
-}
-
-.home-mark::after {
-  content: "";
-  position: absolute;
-  bottom: 0;
-  left: 7px;
-  width: 5px;
-  height: 8px;
-  background: rgba(13, 20, 32, 0.9);
-  border-radius: 2px 2px 0 0;
-}
-
-.gear-mark {
-  position: relative;
-  width: 19px;
-  height: 19px;
-  border: 3px solid currentColor;
-  border-radius: 50%;
-}
-
-.gear-mark::before,
-.gear-mark::after {
-  content: "";
-  position: absolute;
-  inset: -7px 7px;
-  border-top: 4px solid currentColor;
-  border-bottom: 4px solid currentColor;
-}
-
-.gear-mark::after {
-  transform: rotate(90deg);
 }
 
 .workspace {
@@ -453,13 +366,7 @@ button {
   touch-action: none;
   border: 1px solid rgba(151, 174, 207, 0.14);
   border-radius: 5px;
-  background-color: #182234;
-  background-image:
-    linear-gradient(var(--grid-minor) 1px, transparent 1px),
-    linear-gradient(90deg, var(--grid-minor) 1px, transparent 1px),
-    linear-gradient(var(--grid-major) 1px, transparent 1px),
-    linear-gradient(90deg, var(--grid-major) 1px, transparent 1px);
-  background-size: 24px 24px, 24px 24px, 120px 120px, 120px 120px;
+  background: #111b2a;
   box-shadow: inset 0 0 72px rgba(0, 0, 0, 0.28);
 }
 
@@ -469,11 +376,27 @@ button {
 
 #connections,
 #particle-canvas,
+.board-grid,
 .node-layer {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
+}
+
+.board-grid {
+  z-index: 1;
+  border: 1px solid rgba(151, 174, 207, 0.14);
+  border-radius: 4px;
+  background-color: #182234;
+  background-image:
+    linear-gradient(var(--grid-minor) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid-minor) 1px, transparent 1px),
+    linear-gradient(var(--grid-major) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid-major) 1px, transparent 1px);
+  background-size: 24px 24px, 24px 24px, 120px 120px, 120px 120px;
+  box-shadow: inset 0 0 72px rgba(0, 0, 0, 0.28);
+  pointer-events: none;
 }
 
 #connections {
@@ -492,6 +415,7 @@ button {
 }
 
 #connections,
+.board-grid,
 .node-layer {
   width: 5200px;
   height: 3400px;
@@ -880,6 +804,10 @@ button {
 
 .sort-viz.dense .sort-bar-label {
   display: none;
+}
+
+.sort-viz.dense .sort-bar:nth-child(8n + 1) .sort-bar-label {
+  display: block;
 }
 
 .sort-bar-label {
@@ -1278,7 +1206,7 @@ button {
 .drag-ghost {
   position: fixed;
   z-index: 90;
-  display: none;
+  display: none !important;
   padding: 8px 12px;
   border: 1px solid rgba(35, 215, 192, 0.6);
   border-radius: 6px;
@@ -1389,14 +1317,6 @@ button {
   }
 
   .mission-panel {
-    display: none;
-  }
-
-  .hud-strip {
-    grid-template-columns: 1fr auto;
-  }
-
-  .quick-nav {
     display: none;
   }
 

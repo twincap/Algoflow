@@ -20,14 +20,6 @@
         </div>
       </section>
 
-      <nav class="quick-nav" aria-label="연구소 보기">
-        <button class="icon-button active" type="button" title="네트워크" aria-label="네트워크">
-          <span class="home-mark"></span>
-        </button>
-        <button class="icon-button" type="button" title="연구" aria-label="연구">
-          <span class="gear-mark"></span>
-        </button>
-      </nav>
     </header>
 
     <main class="workspace">
@@ -41,6 +33,7 @@
       </aside>
 
       <section class="canvas-wrap" id="canvas-wrap" aria-label="파이프라인 캔버스">
+        <div class="board-grid" id="board-grid" aria-hidden="true"></div>
         <svg id="connections" aria-hidden="true"></svg>
         <canvas id="particle-canvas" aria-hidden="true"></canvas>
         <div class="node-layer" id="canvas"></div>

@@ -128,7 +128,7 @@ const nodeDefs = {
     output: "int[]",
     accepts: ["int[]"],
     hwInput: true,
-    rows: ["O(n^2)", "비교 교환", "CPU 가속"],
+    rows: ["O(n^2)", "비교 교환", "GPU 가속"],
     baseRate: 1,
   },
   SelectionSort: {
@@ -281,25 +281,10 @@ const nodeDefs = {
     rows: ["O(log n)", "target = 60", "키 비교"],
     baseRate: 2.6,
   },
-  CPU: {
-    key: "CPU",
-    category: "hardware",
-    label: "프로세서 셀",
-    kind: "hardware",
-    glyph: "CP",
-    color: colors.hardware,
-    cost: 1100,
-    input: false,
-    output: "cpu",
-    outputKind: "hardware",
-    accepts: [],
-    rows: ["클럭 속도", "x1.8", "직렬"],
-    baseRate: 1.8,
-  },
   GPU: {
     key: "GPU",
     category: "hardware",
-    label: "GPU 클러스터",
+    label: "GPU",
     kind: "hardware",
     glyph: "GP",
     color: "#72b6ff",
@@ -310,21 +295,6 @@ const nodeDefs = {
     accepts: [],
     rows: ["병렬", "x2.4", "배치"],
     baseRate: 2.4,
-  },
-  RAM: {
-    key: "RAM",
-    category: "hardware",
-    label: "메모리 뱅크",
-    kind: "hardware",
-    glyph: "RM",
-    color: "#83caff",
-    cost: 1250,
-    input: false,
-    output: "ram",
-    outputKind: "hardware",
-    accepts: [],
-    rows: ["캐시", "x1.5", "버퍼"],
-    baseRate: 1.5,
   },
   Uploader: {
     key: "Uploader",
@@ -398,13 +368,14 @@ function rawInputLevel() {
 function rawDataScale() {
   const level = rawInputLevel();
   const upgradeLevel = Math.max(0, level - 1);
-  const digitPower = 3 + Math.floor(upgradeLevel / 2);
+  const digitPower = Math.min(15, 3 + upgradeLevel);
+  const maxValue = Math.min(Number.MAX_SAFE_INTEGER, RAW_BASE_MAX_VALUE * Math.pow(10, upgradeLevel));
   return {
     level,
     upgradeLevel,
     maxDigitPower: digitPower,
     sortCount: Math.min(SORT_COUNT_CAP, 16 + level * 6),
-    maxValue: Math.min(Number.MAX_SAFE_INTEGER, RAW_BASE_MAX_VALUE * Math.pow(10, Math.floor(upgradeLevel / 2))),
+    maxValue,
     graphCount: Math.min(GRAPH_COUNT_CAP, 6 + level * 2),
     bstCount: Math.min(BST_COUNT_CAP, 5 + level * 2),
     stringLength: Math.min(14, level + 1),
@@ -445,6 +416,7 @@ function cacheElements() {
     "node-palette",
     "library-count",
     "canvas-wrap",
+    "board-grid",
     "canvas",
     "connections",
     "particle-canvas",
@@ -587,11 +559,7 @@ function renderPalette() {
       }
       event.dataTransfer.setData("text/plain", def.key);
       event.dataTransfer.effectAllowed = "copy";
-      showDragGhost(def.label, event.clientX, event.clientY);
-    });
-    item.addEventListener("dragend", hideDragGhost);
-    item.addEventListener("pointermove", (event) => {
-      if (event.buttons === 1) showDragGhost(def.label, event.clientX, event.clientY);
+      event.dataTransfer.setDragImage(blankDragImage(), 0, 0);
     });
     item.addEventListener("click", () => {
       const point = defaultDropPoint(def.key);
@@ -599,6 +567,22 @@ function renderPalette() {
     });
     els.nodePalette.appendChild(item);
   });
+}
+
+function blankDragImage() {
+  if (!state.blankDragImage) {
+    const el = document.createElement("div");
+    el.style.width = "1px";
+    el.style.height = "1px";
+    el.style.opacity = "0";
+    el.style.position = "fixed";
+    el.style.left = "-10px";
+    el.style.top = "-10px";
+    el.style.pointerEvents = "none";
+    document.body.appendChild(el);
+    state.blankDragImage = el;
+  }
+  return state.blankDragImage;
 }
 
 function refreshPaletteAffordability() {
@@ -647,14 +631,11 @@ function typeLabel(type) {
 }
 
 function showDragGhost(label, x, y) {
-  els.dragGhost.textContent = label;
-  els.dragGhost.style.display = "block";
-  els.dragGhost.style.left = `${x + 14}px`;
-  els.dragGhost.style.top = `${y + 14}px`;
+  return;
 }
 
 function hideDragGhost() {
-  els.dragGhost.style.display = "none";
+  if (els.dragGhost) els.dragGhost.style.display = "none";
 }
 
 function visibleWorldRect() {
@@ -881,6 +862,7 @@ function bindNodePorts(node, root = node.el) {
     port.dataset.bound = "true";
     port.addEventListener("pointerdown", (event) => event.stopPropagation());
     port.addEventListener("click", (event) => handlePortClick(event, node.id, port.dataset.port));
+    port.addEventListener("dblclick", (event) => handlePortDoubleClick(event, node.id, port.dataset.port));
   });
 }
 
@@ -1226,6 +1208,22 @@ function handlePortClick(event, id, portName) {
   setStatus("출력 연결부를 먼저 클릭하세요.", "warn");
 }
 
+function handlePortDoubleClick(event, id, portName) {
+  event.preventDefault();
+  event.stopPropagation();
+  const before = state.connections.length;
+  state.connections = state.connections.filter((conn) => {
+    if (portName === "out") return !(conn.fromId === id && conn.fromPort === portName);
+    return !(conn.toId === id && conn.toPort === portName);
+  });
+  if (state.connections.length === before) return;
+  if (state.connecting?.nodeId === id) state.connecting = null;
+  state.nodes.forEach(refreshNode);
+  simTick();
+  updateAll();
+  setStatus("연결 해제.", "ok");
+}
+
 function bringNodeToFront(node) {
   if (!node) return;
   node.z = ++state.zCounter;
@@ -1496,10 +1494,15 @@ function worldToScreen(point) {
 }
 
 function applyViewportTransform() {
-  if (!els.canvas || !els.connections || !els.canvasWrap) return;
+  if (!els.canvas || !els.connections || !els.canvasWrap || !els.boardGrid) return;
   clampViewportPan();
   const { zoom, panX, panY } = state.viewport;
   const transform = `translate(${panX}px, ${panY}px) scale(${zoom})`;
+
+  els.boardGrid.style.width = `${BOARD_WIDTH}px`;
+  els.boardGrid.style.height = `${BOARD_HEIGHT}px`;
+  els.boardGrid.style.transform = transform;
+  els.boardGrid.style.transformOrigin = "0 0";
 
   els.canvas.style.width = `${BOARD_WIDTH}px`;
   els.canvas.style.height = `${BOARD_HEIGHT}px`;
@@ -1512,12 +1515,6 @@ function applyViewportTransform() {
   els.connections.style.transformOrigin = "0 0";
   els.connections.setAttribute("viewBox", `0 0 ${BOARD_WIDTH} ${BOARD_HEIGHT}`);
 
-  const minor = 24 * zoom;
-  const major = 120 * zoom;
-  const backgroundSize = `${minor}px ${minor}px, ${minor}px ${minor}px, ${major}px ${major}px, ${major}px ${major}px`;
-  const backgroundPosition = `${panX}px ${panY}px, ${panX}px ${panY}px, ${panX}px ${panY}px, ${panX}px ${panY}px`;
-  els.canvasWrap.style.backgroundSize = backgroundSize;
-  els.canvasWrap.style.backgroundPosition = backgroundPosition;
   renderConnections();
 }
 
@@ -1670,6 +1667,8 @@ function deleteNode(id) {
   }
   const node = state.nodes.get(id);
   if (!node) return;
+  const refund = Math.round(nodePurchaseCost(node.def) * 0.3);
+  if (refund > 0) state.funds += refund;
   node.el.remove();
   state.nodes.delete(id);
   state.connections = state.connections.filter((conn) => conn.fromId !== id && conn.toId !== id);
@@ -1677,6 +1676,7 @@ function deleteNode(id) {
   if (state.connecting?.nodeId === id) state.connecting = null;
   simTick();
   updateAll();
+  if (refund > 0) setStatus(`${node.def.label} 삭제. $${formatShort(refund)} 환불.`, "ok");
 }
 
 function showContextMenu(event, id) {
@@ -2312,13 +2312,20 @@ function advanceSortVisuals(dt) {
     }
 
     node.sort.elapsed += dt;
-    const interval = Math.max(5, 42 / Math.max(0.8, node.stats.rate));
+    const interval = sortFrameInterval(node);
     while (node.sort.elapsed >= interval && !node.sort.done) {
       node.sort.elapsed -= interval;
       sortStep(node);
     }
     refreshSortViz(node);
   });
+}
+
+function sortFrameInterval(node) {
+  const base = 42 / Math.max(0.8, node.stats.rate);
+  if (node.key !== "RadixSort" || node.sort?.mode !== "number") return Math.max(5, base);
+  const maxDigits = Math.max(...node.sort.values.map(digitCount), 1);
+  return Math.max(5, base * Math.max(1, maxDigits / 4));
 }
 
 function sortStep(node) {
@@ -2372,7 +2379,8 @@ function refreshSortViz(node) {
   container.innerHTML = node.sort.values.map((value, index) => {
     const active = node.sort.highlight.includes(index);
     const sorted = node.sort.done || node.sort.sorted.includes(index);
-    const label = node.sort.mode === "string" ? `<span class="sort-bar-label">${String(value).slice(0, 1)}</span>` : "";
+    const labelText = node.sort.mode === "string" ? String(value).slice(0, 1) : `${digitCount(value)}d`;
+    const label = `<span class="sort-bar-label">${labelText}</span>`;
     return `<span class="sort-bar ${active ? "active" : ""} ${sorted ? "sorted" : ""}" style="height:${10 + (metrics[index] / max) * 30}px">${label}</span>`;
   }).join("");
 }
@@ -2381,6 +2389,10 @@ function sortValueMetric(value) {
   if (typeof value === "number") return value;
   if (typeof value === "string") return stringRadixCode(value, 0);
   return 1;
+}
+
+function digitCount(value) {
+  return String(Math.max(1, Math.floor(Math.abs(Number(value)) || 1))).length;
 }
 
 function createTraversalState(key) {
